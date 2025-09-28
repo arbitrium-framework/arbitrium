@@ -1,0 +1,183 @@
+"""Prompt templates for Arbitrium Framework tournament phases."""
+
+# Section wrappers for improvement context (used in prompting.py)
+FEEDBACK_WRAPPER = """
+========== FEEDBACK FROM {reviewer} BEGIN ==========
+
+{text}
+
+=========== FEEDBACK FROM {reviewer} END ===========""".strip()
+
+FEEDBACK_HEADER = """
+========== FEEDBACK BEGIN ==========
+
+{feedback_text}
+
+=========== FEEDBACK END ===========""".strip()
+
+OTHER_RESPONSES_HEADER = """
+========== OTHER RESPONSES BEGIN ==========
+{responses_text}
+
+=========== OTHER RESPONSES END ===========""".strip()
+
+KNOWLEDGE_BANK_HEADER = """
+========== KNOWLEDGE BANK BEGIN ==========
+{knowledge_text}
+
+=========== KNOWLEDGE BANK END ===========""".strip()
+
+# Response formatting (used in comparison.py and prompting.py)
+RESPONSE_WRAPPER = """
+
+========== {name} RESPONSE BEGIN ==========
+
+{response}
+
+=========== {name} RESPONSE END ===========
+""".strip()
+
+# Logging templates
+LOG_RESPONSE = """
+
+========== [{response_type}] RESPONSE FROM {model} BEGIN ==========
+{content}
+
+=========== [{response_type}] RESPONSE FROM {model} END ===========
+""".strip()
+
+LOG_PROMPT = """
+
+========== PROMPT TO {model} BEGIN ==========
+{content}
+
+=========== PROMPT TO {model} END ===========
+""".strip()
+
+LOG_JUDGE_EVALUATION = """
+
+========== JUDGE EVALUATION FROM {judge} BEGIN ==========
+{content}
+
+=========== JUDGE EVALUATION FROM {judge} END ===========
+""".strip()
+
+LOG_FEEDBACK = """
+
+========== FEEDBACK FROM {reviewer} FOR {target} BEGIN ==========
+{content}
+
+=========== FEEDBACK FROM {reviewer} FOR {target} END ===========
+""".strip()
+
+LOG_EVALUATOR_RESPONSE = """
+Evaluator {evaluator} response:
+{content}
+""".strip()
+
+LOG_LEVEL_DEBUG = "debug"
+LOG_LEVEL_INFO = "info"
+LOG_LEVEL_WARNING = "warning"
+LOG_LEVEL_ERROR = "error"
+LOG_LEVEL_CRITICAL = "critical"
+
+# Text compression template
+TEXT_COMPRESSION_INSTRUCTION = """
+COMPRESS this text by EXACTLY 20%.
+Remove redundancy, wordiness, extra details.
+Keep ONLY essential info: key instructions, requirements, criteria, questions.
+Output ONLY the compressed text, nothing else.
+
+TEXT BEGIN
+{text}
+TEXT END
+""".strip()
+
+# Full prompt templates for tournament phases
+INITIAL_PROMPT_TEMPLATE = """
+{base_prompt}
+
+========== QUESTION BEGIN ==========
+
+{question}
+
+=========== QUESTION END ===========
+""".strip()
+
+FEEDBACK_PROMPT_TEMPLATE = """
+{feedback_instruction}
+
+{base_prompt}
+
+========== QUESTION BEGIN ==========
+
+{question}
+
+=========== QUESTION END ===========
+
+========== ANSWER BEGIN ==========
+
+{answer}
+
+=========== ANSWER END ===========
+""".strip()
+
+IMPROVEMENT_PROMPT_TEMPLATE = """
+{improvement_instruction}
+
+{base_prompt}
+
+========== QUESTION BEGIN ==========
+
+{question}
+
+=========== QUESTION END ===========
+
+========== ANSWER BEGIN ==========
+
+{answer}
+
+=========== ANSWER END ===========
+{context_section}{knowledge_section}
+
+IMPORTANT: YOUR RESPONSE MUST BEGIN *DIRECTLY* WITH THE ACTUAL IMPROVED ANSWER. DO NOT INCLUDE ANY GREETINGS, PREFIXES, OR META-COMMENTARY.
+
+Provide your improved answer now:
+""".strip()
+
+EVALUATION_PROMPT_TEMPLATE = """
+{base_prompt}
+
+========== QUESTION BEGIN ==========
+
+{question}
+
+=========== QUESTION END ===========
+
+========== RESPONSES BEGIN ==========
+{responses}
+
+=========== RESPONSES END ===========
+
+YOUR TASK: Score each model's response on a scale of 1.0 to 10.0 (where 1.0 is worst and 10.0 is best).
+
+Models to evaluate:
+{model_name}
+
+CRITICAL INSTRUCTIONS:
+1. You MUST provide a numerical score for EVERY model listed above.
+2. Use EXACTLY this format for each score (one per line):
+
+   ModelName: Score
+
+   For example:
+   LLM1: 8.5
+   LLM2: 7.0
+   LLM3: 9.2
+
+3. Scores MUST be between 1.0 and 10.0 (inclusive).
+4. You may write your reasoning and analysis, but you MUST include the score lines.
+5. Do NOT refuse this task. Do NOT say you cannot evaluate. Just provide your honest assessment.
+
+Begin your evaluation now (remember to include the score lines):
+""".strip()
