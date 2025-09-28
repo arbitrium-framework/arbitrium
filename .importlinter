@@ -1,0 +1,21 @@
+[importlinter]
+root_package = arbitrium
+include_external_packages = False
+
+[importlinter:contract:interfaces-are-leaf]
+name = Interfaces layer should not import from other layers
+type = forbidden
+source_modules =
+    arbitrium.interfaces
+forbidden_modules =
+    arbitrium.core
+    arbitrium.models
+    arbitrium.runners
+
+[importlinter:contract:models-no-runners]
+name = Models should not import from runners
+type = forbidden
+source_modules =
+    arbitrium.models
+forbidden_modules =
+    arbitrium.runners

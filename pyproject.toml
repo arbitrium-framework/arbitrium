@@ -1,0 +1,181 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arbitrium"
+dynamic = ["version"]
+authors = [
+  { name="Nikolay Eremeev", email="nikolay.eremeev@outlook.com" },
+]
+description = "Arbitrium Framework: A framework for collaborative-competitive LLM evaluation."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "litellm~=1.77.1",
+    "pyyaml~=6.0",
+    "colorama~=0.4.6",
+    "aiohttp~=3.12.0",
+    "httpx~=0.28.0",
+    "tiktoken>=0.7.0",
+    "aiofiles~=24.1.0",
+    "scikit-learn~=1.5.0",
+    "datasets~=2.14.0",
+    "markdown-it-py~=4.0",
+    "google-auth~=2.41",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest~=8.0",
+    "pytest-asyncio~=1.2",
+    "pytest-cov~=7.0",
+    "pytest-xdist~=3.0",
+    "hypothesis~=6.0",
+    "coverage[toml]~=7.0",
+    "black~=24.10",
+    "isort~=5.12",
+    "ruff~=0.6.9",
+    "mypy~=1.11",
+    "pre-commit~=4.3",
+    "mutmut~=3.3",
+    "radon~=6.0",
+    "import-linter~=2.0",
+]
+
+
+[project.urls]
+"Homepage" = "https://github.com/arbitrium-framework/arbitrium"
+"Bug Tracker" = "https://github.com/arbitrium-framework/arbitrium/issues"
+"Repository" = "https://github.com/arbitrium-framework/arbitrium"
+"Documentation" = "https://github.com/arbitrium-framework/arbitrium#readme"
+
+[project.scripts]
+arbitrium = "arbitrium.runners.cli:run_from_cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "arbitrium.__about__.__version__"}
+
+[tool.setuptools.package-data]
+arbitrium = ["*.yml", "*.yaml", "py.typed"]
+
+[tool.black]
+line-length = 150
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 150
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Evidence-based testing configuration
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "hypothesis: property-based tests using Hypothesis framework",
+    "mutation: tests specifically designed for mutation testing",
+]
+
+[tool.coverage.run]
+# Evidence: Branch coverage better predicts defect exposure than line coverage
+branch = true
+source = ["src/arbitrium"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__init__.py",
+    "*/conftest.py",
+]
+
+[tool.coverage.report]
+# Pre-MVP: Require minimum 15% coverage (will increase as test suite grows)
+fail_under = 15
+skip_covered = true
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+# Hypothesis configuration (property-based testing)
+# Evidence: Hypothesis finds edge cases that example-based tests miss
+[tool.hypothesis]
+max_examples = 100
+derandomize = true
+deadline = 2000  # 2 seconds per test case
+
+[tool.ruff]
+line-length = 150
+target-version = "py310"
+exclude = ["docs/", "site/", "build/", "dist/"]
+
+[tool.ruff.lint]
+select = ["F", "E9", "W6", "B", "C4", "PLE", "PLW", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+strict = true
+warn_unreachable = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_any_generics = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+files = ["src/"]
+exclude = ["^tests/", "^docs/", "^scripts/", "^benchmarks/"]
+
+[[tool.mypy.overrides]]
+module = ["litellm", "litellm.*", "sklearn", "sklearn.*", "markdown_it", "markdown_it.*"]
+ignore_missing_imports = true
