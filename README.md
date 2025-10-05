@@ -13,10 +13,12 @@
 ---
 
 <p align="center">
-  <img src="https://place-hold.it/800x400?text=Arbitrium Framework+In+Action+(GIF+Placeholder)" alt="Arbitrium Framework Demo"/>
+  <a href="https://colab.research.google.com/github/arbitrium-framework/arbitrium/blob/main/examples/interactive_demo.ipynb" target="_blank">
+    <img src="https://img.shields.io/badge/Try%20Now-Interactive%20Demo-blue?style=for-the-badge&logo=google-colab" alt="Try Interactive Demo" height="50"/>
+  </a>
+  <br/>
+  <sub><b>Run real tournaments in your browser • No installation • ~15 minutes • Requires API keys</b></sub>
 </p>
-
-_**Note:** This is a placeholder. You can replace the `src` with a link to your recorded GIF or video._
 
 ---
 
@@ -403,70 +405,6 @@ Absolutely! Arbitrium Framework is designed for both production use and research
 
 We welcome research collaborations and contributions.
 
-## Validation & Benchmarking
-
-Arbitrium Framework includes tools for validating its effectiveness:
-
-### ROI Calculator
-
-Use the interactive calculator to determine if Arbitrium Framework is cost-effective for your decision:
-**[→ Calculate ROI for your decision](https://arbitrium-framework.github.io/arbitrium/calculator.html)**
-
-### Zero-Cost Benchmarking (Recommended)
-
-Run comprehensive benchmarks using **free open-source LLMs** via Ollama. No API costs, fully reproducible.
-
-**Setup (5 minutes):**
-
-```bash
-# Install Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Pull models
-ollama pull llama3 mistral phi3 gemma
-```
-
-**Run benchmarks:**
-
-```bash
-# Quick test (1 question, 2 min)
-python -m benchmarks.micro_benchmark --config benchmarks/config.benchmark.yml
-
-# Full benchmark suite
-python -m benchmarks.standard_benchmarks --config benchmarks/config.benchmark.yml
-```
-
-### Micro-Benchmark (Paid Models)
-
-Run a quick comparison between single model + CoT vs Arbitrium Framework:
-
-```bash
-python -m benchmarks.micro_benchmark --config benchmarks/config.benchmark.yml
-```
-
-This generates side-by-side responses that you can share with colleagues for blind evaluation.
-
-### Knowledge Bank Validation
-
-Test whether the Knowledge Bank adds value:
-
-```bash
-python -m arbitrium.benchmarks.test_kb_quick_validation
-```
-
-Runs 3 tournaments with KB enabled vs disabled for manual quality comparison.
-
-### Provenance Reports
-
-Every tournament automatically generates provenance reports showing:
-
-- Which model proposed each idea
-- How ideas were critiqued and refined
-- Why competing ideas were rejected
-- What insights came from eliminated models
-
-Reports can optionally be saved by setting `save_reports_to_disk: true` in the configuration file (disabled by default to avoid creating unnecessary files).
-
 ## Development
 
 ### Setting up for development
@@ -515,9 +453,12 @@ If you use Arbitrium Framework in your research, please cite:
 
 ```bibtex
 @software{arbitrium2025,
-  author = {Nikolay E.},
-  title = {Arbitrium Framework: Tournament-Based AI Decision Synthesis},
+  author = {Eremeev, Nikolay},
+  title = {Arbitrium: Tournament-Based Multi-Model Synthesis Framework},
   year = {2025},
+  version = {0.0.1},
   url = {https://github.com/arbitrium-framework/arbitrium}
 }
 ```
+
+See [CITATION.cff](CITATION.cff) for the full citation metadata.

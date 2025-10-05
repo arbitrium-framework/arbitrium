@@ -376,14 +376,13 @@ class LiteLLMModel(BaseModel):
         return prompt
 
     def _clean_response_content(self, content: str, logger: Any) -> str:
-        """Clean response content by removing markdown formatting."""
-        from ..utils.context_validation import markdown_to_plain_text
+        """Clean response content - preserve markdown formatting.
 
-        try:
-            return markdown_to_plain_text(content.strip())
-        except Exception as e:
-            logger.debug(f"Markdown removal failed, using raw content: {e}")
-            return content.strip()
+        User pays for full content including markdown formatting.
+        Markdown is useful for readability and structure.
+        """
+        # Only strip whitespace, preserve all markdown formatting
+        return content.strip()
 
     def _try_extract_content_from_response(self, response: Any, cost: float, logger: Any) -> ModelResponse | None:
         """Try to extract content from response, return ModelResponse if successful."""

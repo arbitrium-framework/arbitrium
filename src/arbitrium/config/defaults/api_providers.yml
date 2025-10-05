@@ -1,0 +1,43 @@
+# Default API provider configuration
+#
+# ⚠️  WARNING: This file does NOT contain actual API keys!
+# ⚠️  This is a template showing how to retrieve secrets from:
+#     1. Environment variables (env_var)
+#     2. 1Password CLI (op_path)
+#
+# Your actual API keys should be stored in:
+#   • Environment variables (recommended for production)
+#   • 1Password vault (recommended for local development)
+#   • Never commit real API keys to git!
+#
+# You can override or extend this in your specific config file.
+
+secrets:
+  providers:
+    openai:
+      env_var: OPENAI_API_KEY
+      op_path: "op://Personal/OpenAI/api-key"
+
+    anthropic:
+      env_var: ANTHROPIC_API_KEY
+      op_path: "op://Personal/Anthropic/api-key"
+
+    vertex_ai:
+      env_var: VERTEX_AI_API_KEY
+      op_path: "op://Personal/VertexAI/api-key"
+
+    xai:
+      env_var: XAI_API_KEY
+      op_path: "op://Personal/XAI/api-key"
+
+    google:
+      env_var: GOOGLE_API_KEY
+      op_path: "op://Personal/Google/api-key"
+
+    cohere:
+      env_var: COHERE_API_KEY
+      op_path: "op://Personal/Cohere/api-key"
+
+    mistral:
+      env_var: MISTRAL_API_KEY
+      op_path: "op://Personal/Mistral/api-key"

@@ -1,0 +1,111 @@
+question: >-
+  Generative AI Strategy for B2B SaaS Company
+
+  Context
+
+  - Company: Mature B2B project management product, 300 employees, $40M ARR, growth slowing down.
+  - Team: 50 backend engineers, 5 classical ML engineers (no LLM experience), 5 DevOps/SRE, no MLOps.
+  - Pressure: "AI-native" competitors are winning deals.
+  - Asset: Massive private dataset (projects, comments, metadata) → competitive advantage and GDPR responsibility.
+  - Goals:
+    1. Within 6 months — noticeable AI feature for the market.
+    2. Within 2-3 years — defensible moat around proprietary data.
+    3. Strict security/compliance (GDPR/enterprise standards).
+
+  Three Strategic Paths
+
+  Path A: Proprietary API Wrapper - Send anonymized data to external LLM providers (OpenAI/Anthropic/etc).
+  Path B: Own Open-Source LLM Stack - Self-hosted Llama/Mistral with fine-tuning on private data in private cloud.
+  Path C: Hybrid Approach - External APIs for commodity scenarios + parallel build of OS-LLM stack for sensitive "golden" use cases.
+
+  Requirements:
+
+  1. ROI Analysis / Pros-Cons / Timelines - Analyze each path at 6-month and 3-year horizons with:
+     - Time-to-value and commercial impact
+     - Unit economics and cost structure
+     - Competitive moat and defensibility
+     - Risk of lock-in and vendor dependency
+
+  2. Technical Feasibility given current team constraints:
+     - 50 backend engineers (general purpose, no LLM experience)
+     - 5 ML engineers (classical ML only, no transformer/LLM expertise)
+     - 5 DevOps/SRE (no MLOps platform)
+     - What infrastructure, tooling, and hiring is required for each path?
+
+  3. Key Risks and Mitigation Strategies for each approach covering:
+     - GDPR/Privacy: Data residency, anonymization, PII handling, DPAs, no-train policies
+     - Hallucinations/Trust: RAG accuracy, citation quality, human-in-the-loop, guardrails
+     - Vendor Lock-in: Cost escalation, API changes, multi-provider abstraction
+     - Model Quality/Reliability: Safety, evaluation pipelines, regression testing
+     - Cost/GPU Economics: Inference costs, caching, quantization, batch optimization
+
+  Critical Constraints and Edge Cases:
+
+  GDPR Deep Compliance:
+  - DSAR/Right-to-Erasure Crisis: Enterprise client exercises GDPR right-to-erasure, demanding complete data removal
+    within 7 days. Problem: Their project data was already used in OS-LLM fine-tuning dataset.
+    Describe detailed process for:
+    - Weight/artifact deletion (SISA - Sharded, Isolated, Sliced, and Aggregated learning)
+    - Data lineage tracking (data maps showing which training batches contain their data)
+    - Re-training/fine-tuning cache purge procedures
+    - Compliance verification and audit trail
+
+  Schrems II / Data Sovereignty:
+  - EU Government Segment: 15% of revenue comes from EU public sector clients with strict requirements:
+    - EU-only data processing (no data leaving EU jurisdiction)
+    - Prohibition on US-based subprocessors (impacts OpenAI, Anthropic, AWS US regions)
+    - Mandatory compliance: GDPR + NIS2 + Cloud Act protections
+    - How does this impact each path's feasibility and cost structure?
+
+  Ethical and Safety Requirements:
+  - Toxic/Biased Content: Historical project comments contain toxic language, discriminatory statements,
+    and biased perspectives that could leak into model outputs
+  - Zero-Hallucination Policy: Risk analytics use case requires zero-tolerance for hallucinations
+    (financial/legal liability). Human-in-the-loop (HITL) mandatory for all risk assessments.
+  - Bias Detection: Need continuous monitoring for gender/racial/age bias in AI suggestions
+
+  Commercial Pressure:
+  - Enterprise On-Prem Demand: Your largest customer (20% of ARR, $8M) demands:
+    - On-premises LLM deployment (no cloud, air-gapped environment)
+    - Contractual "no-train" guarantee on their proprietary data
+    - Custom compliance certifications (ISO 27001, SOC2 Type II, FedRAMP equivalent)
+    - Threatens to switch to competitor if not delivered in 9 months
+
+  Resource Constraints:
+  - GPU Quota Crisis: Month 1 cloud allocation is only 8×A100 GPUs with unstable quotas
+  - Hiring Market: LLM engineers commanding $300K+ compensation, 6-month hiring cycle
+  - Budget Ceiling: Board approved max $5M for Year 1, any overrun requires new approval cycle
+
+  4. Concrete Recommendation with:
+     - Specific path choice (A, B, or C) with detailed justification addressing ALL critical constraints above
+     - Phased implementation plan (0-3 months, 3-6 months, 6-18 months, 18-36 months)
+     - How to handle each edge case:
+       - DSAR/Right-to-erasure with 7-day SLA (technical implementation)
+       - EU-only processing for government segment (architecture changes)
+       - Enterprise on-prem deployment for $8M customer (delivery plan)
+       - GPU quota constraints in Month 1 (optimization strategies)
+       - Zero-hallucination policy for risk analytics (HITL workflow design)
+     - Budget breakdown (Year 1: max $5M - team, infrastructure, API costs, consulting, compliance)
+     - First 10 tactical steps to execute in next 30 days
+     - Success metrics and KPIs for each phase
+     - Unit economics model (tokens/request, requests/user, $/user/month vs ARPU uplift)
+     - Risk mitigation playbook for each critical constraint
+
+  This decision affects $2M-5M in Year 1 costs and could determine company survival. Must satisfy:
+  - $8M customer retention (20% of ARR) with on-prem delivery in 9 months
+  - EU government compliance (15% of revenue) with Schrems II requirements
+  - GDPR right-to-erasure capability with 7-day SLA
+  - Speed-to-market (6 months to defensible AI feature) vs long-term moat (3-year data advantage)
+  - Resource constraints (8×A100 GPUs Month 1, $5M budget ceiling, 6-month hiring cycle)
+
+# Active models for this benchmark
+# Model definitions come from config/defaults/models.yml
+# Just list which models to use (can override settings if needed)
+models:
+  gemma3-4b: {}
+  qwen3-4b: {}
+
+# All other settings (retry, features, knowledge_bank, prompts, secrets)
+# are loaded from config/defaults/ automatically
+
+outputs_dir: "reports"

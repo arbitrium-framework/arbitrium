@@ -12,13 +12,18 @@ logger = get_contextual_logger("arbitrium.config")
 
 
 def validate_config(config_data: dict[str, Any]) -> bool:
-    """Validates the configuration data."""
+    """
+    Validates the configuration data.
+
+    Framework-level validation - no default values allowed.
+    """
     has_errors = False
     schema = {
         "models": {"required": True, "type": dict, "non_empty": True},
         "retry": {"required": True, "type": dict},
         "features": {"required": True, "type": dict},
         "prompts": {"required": True, "type": dict},
+        "outputs_dir": {"required": True, "type": str, "non_empty": True},
     }
 
     logger.debug(f"Validating config sections: {list(config_data.keys())}")
@@ -58,26 +63,130 @@ def validate_config(config_data: dict[str, Any]) -> bool:
 class Config:
     """Configuration manager for Arbitrium Framework."""
 
-    def __init__(self, config_path: str = "config.yml") -> None:
-        """Initialize configuration from the given path."""
-        self.config_path = Path(config_path)
+    def __init__(self, config_path: str | None = None) -> None:
+        """
+        Initialize configuration from the given path.
+
+        Args:
+            config_path: Path to configuration file (REQUIRED when calling load())
+
+        Note:
+            The framework does not provide default config paths. This must be
+            explicitly specified by the caller (CLI, benchmark, or user code).
+        """
+        self.config_path = Path(config_path) if config_path else None
         self.config_data: dict[str, Any] = {}
         self.retry_settings: dict[str, Any] = {}
         self.feature_flags: dict[str, Any] = {}
         self.prompts: dict[str, Any] = {}
 
+    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+        """
+        Deep merge two dictionaries.
+
+        Args:
+            base: Base dictionary
+            override: Override dictionary (takes precedence)
+
+        Returns:
+            Merged dictionary where override values take precedence
+        """
+        result = base.copy()
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    def _load_defaults(self) -> dict[str, Any]:
+        """
+        Load all default configurations from the defaults/ directory.
+
+        Returns:
+            Merged default configuration dictionary
+        """
+        defaults_dir = Path(__file__).parent / "defaults"
+        defaults: dict[str, Any] = {}
+
+        if not defaults_dir.exists():
+            logger.debug(f"Defaults directory not found: {defaults_dir}")
+            return defaults
+
+        yaml_files = sorted(defaults_dir.glob("*.yml"))
+        logger.debug(f"Loading {len(yaml_files)} default config files from {defaults_dir}")
+
+        for yml_file in yaml_files:
+            try:
+                with open(yml_file, encoding="utf-8") as f:
+                    file_data = yaml.safe_load(f)
+                    if file_data:
+                        defaults = self._deep_merge(defaults, file_data)
+                        logger.debug(f"Loaded defaults from {yml_file.name}")
+            except yaml.YAMLError as e:
+                logger.warning(f"Failed to parse default config {yml_file.name}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to load default config {yml_file.name}: {e}")
+
+        return defaults
+
     def _load_config_file(self) -> bool:
         """Load and parse the YAML config file."""
+        if self.config_path is None:
+            logger.error("No config path specified. The framework requires an explicit config file path.")
+            return False
+
         if not self.config_path.exists():
             logger.error(f"Config file not found at {self.config_path.resolve()}")
             return False
 
         with open(self.config_path, encoding="utf-8") as f:
             try:
-                self.config_data = yaml.safe_load(f)
+                user_config = yaml.safe_load(f)
             except yaml.YAMLError as e:
                 logger.error(f"Failed to parse YAML config file: {e}")
                 return False
+
+        # Load defaults first
+        self.config_data = self._load_defaults()
+        logger.debug(f"Loaded defaults with sections: {list(self.config_data.keys())}")
+
+        # Merge user config on top of defaults
+        if user_config:
+            # Special handling for models section - only use models specified in user config
+            if "models" in user_config:
+                user_model_keys = list(user_config["models"].keys())
+                default_models = self.config_data.get("models", {})
+
+                logger.debug(f"User specified models: {user_model_keys}")
+                logger.debug(f"Available default models: {list(default_models.keys())}")
+
+                # Build models dict with only user-specified models
+                filtered_models = {}
+                for model_key in user_model_keys:
+                    # Start with defaults for this model (if exists)
+                    base_model = default_models.get(model_key, {})
+                    if not base_model:
+                        logger.warning(
+                            f"Model '{model_key}' not found in defaults. " f"You must provide full configuration (provider, model_name, etc.)"
+                        )
+                    # Merge with user overrides (handle None/empty dict)
+                    user_model = user_config["models"][model_key] or {}
+                    if base_model or user_model:
+                        filtered_models[model_key] = self._deep_merge(base_model, user_model)
+
+                logger.info(f"Loaded {len(filtered_models)} models: {list(filtered_models.keys())}")
+
+                # Merge everything except models, then set models explicitly
+                user_config_without_models = {k: v for k, v in user_config.items() if k != "models"}
+                self.config_data = self._deep_merge(self.config_data, user_config_without_models)
+                self.config_data["models"] = filtered_models
+            else:
+                # No models in user config - use all defaults
+                self.config_data = self._deep_merge(self.config_data, user_config)
+
+            logger.debug(f"Merged user config, final sections: {list(self.config_data.keys())}")
+
         logger.info(f"Loaded configuration from {self.config_path}")
         return True
 

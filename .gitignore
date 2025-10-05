@@ -115,10 +115,14 @@ credentials.json
 # --- Project-Specific ---
 # Generated files specific to a project's workflow.
 directory_tree.yaml
-reports/
 my_reports
 benchmark_results/
 *.benchmark.json
+
+# Keep lightweight markdown docs in reports/, exclude heavy data files
+reports/*.csv
+reports/*.json
+reports/*.parquet
 
 # --- Arbitrium Framework Specific ---
 # Runtime logs and outputs
@@ -126,6 +130,14 @@ arbitrium_logs*.log
 arbitrium_champion_*.md
 arbitrium_provenance*.md
 arbitrium_provenance*.json
+arbitrium_*_provenance.json
+arbitrium_*_champion_solution.md
+arbitrium_*_complete_history.json
+
+# Strategy benchmark (personal/private)
+src/arbitrium/benchmarks/strategy_benchmark.py
+src/arbitrium/benchmarks/config.strategy_benchmark.yml
+src/arbitrium/benchmarks/reports/strategy_benchmark_results.md
 
 # Coverage reports
 coverage.xml

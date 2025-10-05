@@ -329,6 +329,8 @@ def get_contextual_logger(name: str = "arbitrium") -> ContextualLogger:
     """
     Get a contextual logger instance.
 
+    NOTE: You must call setup_logging() before using this logger!
+
     Args:
         name: Logger name (default: "arbitrium")
 
