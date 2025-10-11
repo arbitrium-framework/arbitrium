@@ -66,20 +66,9 @@ class ColorFormatter(logging.Formatter):
         original_msg = super().format(record)
 
         # Build context parts from record attributes (set by ContextFilter)
-        context_parts = []
+        from arbitrium.logging.structured import build_context_parts
 
-        # Check for context attributes (set by ContextFilter)
-        if hasattr(record, "run_id") and record.run_id:
-            context_parts.append(f"run:{record.run_id}")
-
-        if hasattr(record, "task_id") and record.task_id:
-            context_parts.append(f"task:{record.task_id}")
-
-        if hasattr(record, "phase") and record.phase:
-            context_parts.append(f"phase:{record.phase}")
-
-        if hasattr(record, "model") and record.model:
-            context_parts.append(f"model:{record.model}")
+        context_parts = build_context_parts(record)
 
         # Add module info if enabled
         if self.include_module and hasattr(record, "module"):
@@ -301,7 +290,7 @@ def setup_logging(
         from datetime import datetime
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = f"arbitrium_logs_{timestamp}.log"
+        log_file = f"arbitrium_{timestamp}_logs.log"
 
     # Validate log file path
     log_file = _validate_log_file_path(log_file)

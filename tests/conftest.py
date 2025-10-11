@@ -3,19 +3,20 @@
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 
-@pytest.fixture
+@pytest.fixture()  # type: ignore[misc]
 def tmp_dir() -> Generator[Path, None, None]:
     """Create a temporary directory for tests."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
 
 
-@pytest.fixture
-def sample_config() -> dict:
+@pytest.fixture()  # type: ignore[misc]
+def sample_config() -> dict[str, Any]:
     """Sample configuration for testing."""
     return {
         "models": {
@@ -52,7 +53,7 @@ def sample_config() -> dict:
     }
 
 
-@pytest.fixture
+@pytest.fixture()  # type: ignore[misc]
 def sample_question() -> str:
     """Sample question for testing."""
     return "What is the capital of France?"

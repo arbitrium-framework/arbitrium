@@ -1,0 +1,12 @@
+# Default feature flags for Arbitrium tournaments
+#
+# These settings control various framework features.
+# You can override them in your specific config file if needed.
+
+features:
+  save_reports_to_disk: true
+  deterministic_mode: true
+  judge_model: null  # null = use peer evaluation, or specify model key for single judge
+  knowledge_bank_model: "leader"  # "leader" = use current leader, or specify model key
+  llm_compression: false  # Disabled - user pays for full context
+  compression_model: "claude"  # Model to use if compression is enabled

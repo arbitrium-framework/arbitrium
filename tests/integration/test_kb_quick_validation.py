@@ -16,17 +16,18 @@ Usage:
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from arbitrium.core.comparison import ModelComparison
 from arbitrium.logging import get_contextual_logger
-from arbitrium.utils.benchmark import initialize_benchmark
+from benchmarks.benchmark_helpers import initialize_benchmark
 from benchmarks.reporting import generate_manual_evaluation_template
-from tests.shared_data import TEST_QUESTIONS
+from tests.test_data_shared import TEST_QUESTIONS
 
 logger = get_contextual_logger("tests.integration.test_kb_quick_validation")
 
 
-async def run_tournament(question: str, kb_enabled: bool, comparison: ModelComparison) -> dict:
+async def run_tournament(question: str, kb_enabled: bool, comparison: ModelComparison) -> dict[str, Any]:
     """Run a single tournament with KB enabled or disabled."""
     # Override KB setting
     comparison.config["knowledge_bank"]["enabled"] = kb_enabled
@@ -44,7 +45,7 @@ async def run_tournament(question: str, kb_enabled: bool, comparison: ModelCompa
     }
 
 
-async def main():
+async def main() -> None:
     """Run quick validation test."""
     print("=" * 80)
     print("KNOWLEDGE BANK QUICK VALIDATION TEST")
@@ -137,9 +138,9 @@ async def main():
 
             kb_insights = result["kb_on"]["kb_insights"]  # type: ignore[index]
             if kb_insights:
-                insights_list = list(kb_insights) if hasattr(kb_insights, "__iter__") else []
-                f.write(f"KB Insights Extracted ({len(insights_list)}):\n")
-                for idx, insight in enumerate(insights_list, 1):
+                insights_list_file: list[Any] = list(kb_insights) if hasattr(kb_insights, "__iter__") else []
+                f.write(f"KB Insights Extracted ({len(insights_list_file)}):\n")
+                for idx, insight in enumerate(insights_list_file, 1):
                     f.write(f"{idx}. {insight!s}\n")
                 f.write("\n")
 

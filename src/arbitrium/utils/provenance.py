@@ -39,8 +39,56 @@ class ProvenanceReport:
         self.tournament_data = tournament_data
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    def generate_json(self) -> dict[str, Any]:
-        """Generate structured JSON provenance report."""
+    def _generate_champion_with_provenance(self) -> str:
+        """
+        Generate champion solution MD with provenance at the end.
+
+        Returns full champion answer + tournament evolution.
+        """
+        md = []
+
+        # Header
+        md.append(f"# Champion Solution {self.timestamp}")
+        md.append("")
+        md.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        md.append("")
+
+        # Question
+        md.append("## Initial Question")
+        md.append("")
+        md.append(self.question)
+        md.append("")
+
+        # Champion info
+        md.append("## Champion Model")
+        md.append("")
+        md.append(self.champion_model)
+        md.append("")
+
+        # Champion solution (FULL, no truncation)
+        md.append("## Champion Solution")
+        md.append("")
+        md.append(self.champion_answer)
+        md.append("")
+
+        # Separator
+        md.append("---")
+        md.append("")
+
+        # Tournament Provenance (evolution, NOT full history)
+        md.append("## Tournament Provenance")
+        md.append("")
+        md.append(self.generate_markdown())
+
+        return "\n".join(md)
+
+    def _generate_provenance_metadata(self) -> dict[str, Any]:
+        """
+        Generate provenance JSON with full metadata.
+
+        NO truncation - includes full phases and eliminations.
+        User pays for complete information.
+        """
         report = {
             "tournament_id": self.timestamp,
             "question": self.question,
@@ -54,13 +102,19 @@ class ProvenanceReport:
         return report
 
     def _format_phase_initial(self, md: list[str], phase: dict[str, Any]) -> None:
-        """Format initial phase responses."""
+        """
+        Format initial phase responses.
+
+        NO truncation - full responses preserved.
+        """
         md.append("All models provided initial responses independently.")
         md.append("")
         for model, answer in phase.get("responses", {}).items():
-            md.append(f"{model}:")
+            md.append(f"**{model}:**")
+            md.append("")
+            # Use fenced code block to protect MD content inside answers
             md.append("```")
-            md.append(f"{answer}")
+            md.append(str(answer))
             md.append("```")
             md.append("")
 
@@ -106,27 +160,32 @@ class ProvenanceReport:
                 md.append("")
 
     def _format_eliminations(self, md: list[str]) -> None:
-        """Format elimination information."""
+        """
+        Format elimination information.
+
+        NO truncation - ALL insights preserved (not just first 3).
+        """
         eliminations = self._extract_eliminations()
         if not eliminations:
             return
 
-        md.append("## Eliminations")
+        md.append("### Eliminations")
         md.append("")
 
         for elim in eliminations:
-            md.append(f"### Round {elim['round']}: {elim['model']} Eliminated")
+            md.append(f"#### Round {elim['round']}: {elim['model']} Eliminated")
             md.append("")
-            md.append(f"Score: {elim.get('score', 'N/A')}")
+            md.append(f"**Score:** {elim.get('score', 'N/A')}")
             md.append("")
             if "reason" in elim:
-                md.append(f"Reason: {elim['reason']}")
+                md.append(f"**Reason:** {elim['reason']}")
                 md.append("")
 
+            # ALL insights, no limit
             if elim.get("insights_preserved"):
-                md.append("Insights Preserved from this Model:")
+                md.append("**Insights Preserved from this Model:**")
                 md.append("")
-                for insight in elim["insights_preserved"][:3]:
+                for insight in elim["insights_preserved"]:
                     md.append(f"- {insight}")
                 md.append("")
 
@@ -134,23 +193,23 @@ class ProvenanceReport:
             md.append("")
 
     def _format_cost_summary(self, md: list[str]) -> None:
-        """Format cost summary information."""
+        """Format cost summary information - full details."""
         cost = self.tournament_data.get("total_cost")
         if not cost:
             return
 
-        md.append("## Cost Summary")
+        md.append("### Cost Summary")
         md.append("")
         # Handle cost as either float or string
         if isinstance(cost, str):
-            md.append(f"Total: {cost}")
+            md.append(f"**Total:** {cost}")
         else:
-            md.append(f"Total: ${cost:.4f}")
+            md.append(f"**Total:** ${cost:.4f}")
         md.append("")
 
         cost_by_model = self.tournament_data.get("cost_by_model", {})
         if cost_by_model:
-            md.append("Cost by Model:")
+            md.append("**Cost by Model:**")
             md.append("")
 
             # model_cost уже отформатирован как строка "$X.XXXX" в comparison.py
@@ -167,36 +226,20 @@ class ProvenanceReport:
             md.append("")
 
     def generate_markdown(self) -> str:
-        """Generate human-readable Markdown provenance report."""
+        """
+        Generate provenance markdown (for embedding in champion solution).
+
+        Shows tournament evolution WITHOUT repeating the question/champion/answer.
+        """
         md = []
 
-        # Header
-        md.append("# Tournament Provenance Report")
-        md.append("")
-        md.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        md.append("")
-
-        # Question
-        md.append("## Question")
-        md.append("")
-        md.append(f"{self.question}")
-        md.append("")
-
-        # Champion
-        md.append(f"## Champion: {self.champion_model}")
-        md.append("")
-        md.append("### Final Answer")
-        md.append("")
-        md.append(f"{self.champion_answer}")
-        md.append("")
-
         # Tournament Evolution
-        md.append("## Tournament Evolution")
+        md.append("### Tournament Evolution")
         md.append("")
 
         phases = self._extract_phases()
         for phase in phases:
-            md.append(f"### {phase['name']}")
+            md.append(f"#### {phase['name']}")
             md.append("")
 
             if phase["type"] == "initial":
@@ -290,61 +333,50 @@ class ProvenanceReport:
 
         return eliminations
 
-    def save_to_file(self, output_dir: str) -> dict[str, str]:
+    async def save_to_file(self, output_dir: str, timestamp: str) -> dict[str, str]:
         """
-        Save provenance report to both JSON and Markdown formats.
+        Save champion solution with provenance and tournament data.
+
+        Saves 3 files:
+        1. arbitrium_{timestamp}_champion_solution.md - Champion answer + provenance MD
+        2. arbitrium_{timestamp}_provenance.json - Compact provenance metadata
+        3. arbitrium_{timestamp}_complete_history.json - Full tournament history
 
         Args:
-            output_dir: Directory where reports should be saved
+            output_dir: Directory where files should be saved
+            timestamp: Timestamp string for file naming
 
         Returns:
-            Dict with paths to saved files
+            Dict with paths to all saved files
         """
         output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
 
-        # Save JSON
-        json_filename = f"arbitrium_provenance_{self.timestamp}.json"
-        json_path = output_path / json_filename
-        with open(json_path, "w") as f:
-            json.dump(self.generate_json(), f, indent=2)
+        # 1. Save champion solution MD with provenance at the end
+        champion_md_filename = f"arbitrium_{timestamp}_champion_solution.md"
+        champion_md_path = output_path / champion_md_filename
 
-        # Save Markdown
-        md_filename = f"arbitrium_provenance_{self.timestamp}.md"
-        md_path = output_path / md_filename
-        with open(md_path, "w") as f:
-            f.write(self.generate_markdown())
+        champion_md_content = self._generate_champion_with_provenance()
+        with open(champion_md_path, "w", encoding="utf-8") as f:
+            f.write(champion_md_content)
+
+        # 2. Save compact provenance JSON (metadata only, no full history)
+        provenance_json_filename = f"arbitrium_{timestamp}_provenance.json"
+        provenance_json_path = output_path / provenance_json_filename
+
+        provenance_data = self._generate_provenance_metadata()
+        with open(provenance_json_path, "w", encoding="utf-8") as f:
+            json.dump(provenance_data, f, indent=2, ensure_ascii=False)
+
+        # 3. Save complete history JSON (all tournament data)
+        complete_history_filename = f"arbitrium_{timestamp}_complete_history.json"
+        complete_history_path = output_path / complete_history_filename
+
+        with open(complete_history_path, "w", encoding="utf-8") as f:
+            json.dump(self.tournament_data, f, indent=2, ensure_ascii=False)
 
         return {
-            "json": str(json_path),
-            "markdown": str(md_path),
+            "champion_md": str(champion_md_path),
+            "provenance_json": str(provenance_json_path),
+            "complete_history_json": str(complete_history_path),
         }
-
-
-def generate_provenance_report(
-    question: str,
-    champion_model: str,
-    champion_answer: str,
-    tournament_data: dict[str, Any],
-    output_dir: str,
-) -> dict[str, str]:
-    """
-    Generate and save provenance report.
-
-    Args:
-        question: The initial question
-        champion_model: Winning model name
-        champion_answer: Final champion answer
-        tournament_data: Complete tournament history
-        output_dir: Directory where reports should be saved
-
-    Returns:
-        Dict with paths to saved files
-    """
-    report = ProvenanceReport(
-        question=question,
-        champion_model=champion_model,
-        champion_answer=champion_answer,
-        tournament_data=tournament_data,
-    )
-
-    return report.save_to_file(output_dir)
