@@ -7,10 +7,18 @@ import uuid
 from datetime import datetime
 
 # Context variables for correlation IDs
-run_id_context: contextvars.ContextVar[str | None] = contextvars.ContextVar("run_id", default=None)
-task_id_context: contextvars.ContextVar[str | None] = contextvars.ContextVar("task_id", default=None)
-phase_context: contextvars.ContextVar[str | None] = contextvars.ContextVar("phase", default=None)
-model_context: contextvars.ContextVar[str | None] = contextvars.ContextVar("model", default=None)
+run_id_context: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "run_id", default=None
+)
+task_id_context: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "task_id", default=None
+)
+phase_context: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "phase", default=None
+)
+model_context: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "model", default=None
+)
 
 
 def generate_run_id() -> str:
@@ -77,6 +85,37 @@ def clear_all_context() -> None:
     task_id_context.set(None)
     phase_context.set(None)
     model_context.set(None)
+
+
+def build_context_parts(record: logging.LogRecord) -> list[str]:
+    """
+    Build context parts from log record attributes.
+
+    This function extracts context attributes set by ContextFilter and
+    formats them as a list of strings for display.
+
+    Args:
+        record: LogRecord with context attributes set by ContextFilter
+
+    Returns:
+        List of formatted context strings (e.g., ["run:abc123", "task:def456"])
+    """
+    context_parts = []
+
+    # Check for context attributes (set by ContextFilter)
+    if hasattr(record, "run_id") and record.run_id:
+        context_parts.append(f"run:{record.run_id}")
+
+    if hasattr(record, "task_id") and record.task_id:
+        context_parts.append(f"task:{record.task_id}")
+
+    if hasattr(record, "phase") and record.phase:
+        context_parts.append(f"phase:{record.phase}")
+
+    if hasattr(record, "model") and record.model:
+        context_parts.append(f"model:{record.model}")
+
+    return context_parts
 
 
 class JSONFormatter(logging.Formatter):
@@ -167,7 +206,12 @@ class StructuredFormatter(logging.Formatter):
     for proper context injection.
     """
 
-    def __init__(self, fmt: str | None = None, datefmt: str | None = None, include_module: bool = True) -> None:
+    def __init__(
+        self,
+        fmt: str | None = None,
+        datefmt: str | None = None,
+        include_module: bool = True,
+    ) -> None:
         """Initialize the formatter."""
         # Build format string with context attributes
         if fmt is None:
@@ -183,20 +227,7 @@ class StructuredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format the log record with correlation IDs and context."""
         # Build context parts from record attributes (set by ContextFilter)
-        context_parts = []
-
-        # Check for context attributes (set by ContextFilter)
-        if hasattr(record, "run_id") and record.run_id:
-            context_parts.append(f"run:{record.run_id}")
-
-        if hasattr(record, "task_id") and record.task_id:
-            context_parts.append(f"task:{record.task_id}")
-
-        if hasattr(record, "phase") and record.phase:
-            context_parts.append(f"phase:{record.phase}")
-
-        if hasattr(record, "model") and record.model:
-            context_parts.append(f"model:{record.model}")
+        context_parts = build_context_parts(record)
 
         # Format the original message
         original_msg = super().format(record)
@@ -206,7 +237,12 @@ class StructuredFormatter(logging.Formatter):
             # Find the end of the level marker
             level_end = original_msg.find("]") + 1
             context_prefix = "[" + "] [".join(context_parts) + "] "
-            return original_msg[:level_end] + " " + context_prefix + original_msg[level_end:].lstrip()
+            return (
+                original_msg[:level_end]
+                + " "
+                + context_prefix
+                + original_msg[level_end:].lstrip()
+            )
         elif context_parts:
             context_prefix = "[" + "] [".join(context_parts) + "] "
             return context_prefix + original_msg
@@ -277,7 +313,9 @@ class ContextualLogger:
                 set_model(self.model)
             return self
 
-        def __exit__(self, _exc_type: object, _exc_val: object, _exc_tb: object) -> None:
+        def __exit__(
+            self, _exc_type: object, _exc_val: object, _exc_tb: object
+        ) -> None:
             """Exit the context and clear task-specific data."""
             clear_task_context()
             if self.phase:
@@ -316,18 +354,28 @@ class ContextualLogger:
         """Log warning message with context."""
         self.logger.warning(message, extra=kwargs, stacklevel=2)
 
-    def error(self, message: str, exc_info: bool = False, **kwargs: object) -> None:
+    def error(
+        self, message: str, exc_info: bool = False, **kwargs: object
+    ) -> None:
         """Log error message with context."""
-        self.logger.error(message, exc_info=exc_info, extra=kwargs, stacklevel=2)
+        self.logger.error(
+            message, exc_info=exc_info, extra=kwargs, stacklevel=2
+        )
 
-    def critical(self, message: str, exc_info: bool = True, **kwargs: object) -> None:
+    def critical(
+        self, message: str, exc_info: bool = True, **kwargs: object
+    ) -> None:
         """Log critical message with context."""
-        self.logger.critical(message, exc_info=exc_info, extra=kwargs, stacklevel=2)
+        self.logger.critical(
+            message, exc_info=exc_info, extra=kwargs, stacklevel=2
+        )
 
 
 def get_contextual_logger(name: str = "arbitrium") -> ContextualLogger:
     """
     Get a contextual logger instance.
+
+    NOTE: You must call setup_logging() before using this logger!
 
     Args:
         name: Logger name (default: "arbitrium")

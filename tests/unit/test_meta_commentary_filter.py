@@ -9,7 +9,7 @@ setup_logging(enable_file_logging=False)
 logger = get_contextual_logger("test")
 
 
-def test_remove_sure_here_is_prefix():
+def test_remove_sure_here_is_prefix() -> None:
     """Test removing 'Sure, here is' prefix."""
     text = """Sure, here is an improved answer:
 
@@ -23,7 +23,7 @@ It has multiple lines and important information."""
     assert result == expected
 
 
-def test_remove_greeting_prefix():
+def test_remove_greeting_prefix() -> None:
     """Test removing greeting prefix."""
     text = """Hello! I am here to help you.
 
@@ -35,7 +35,7 @@ The actual content starts here."""
     assert result == expected
 
 
-def test_remove_okay_here_is_prefixes():
+def test_remove_okay_here_is_prefixes() -> None:
     """Test removing 'Okay,' and 'here is' prefixes."""
     text = """Okay, here is my refined answer:
 
@@ -49,7 +49,7 @@ More details here."""
     assert result == expected
 
 
-def test_keep_content_without_meta_commentary():
+def test_keep_content_without_meta_commentary() -> None:
     """Test keeping content without meta-commentary."""
     text = """This is a direct answer without any meta-commentary.
 It just provides the information requested."""
@@ -58,7 +58,7 @@ It just provides the information requested."""
     assert result == text
 
 
-def test_remove_certainly_prefix():
+def test_remove_certainly_prefix() -> None:
     """Test removing 'Certainly' prefix."""
     text = """Certainly, I'll provide an improved response:
 
@@ -69,7 +69,7 @@ The main content follows here."""
     assert result == expected
 
 
-def test_remove_multiple_meta_commentary_lines():
+def test_remove_multiple_meta_commentary_lines() -> None:
     """Test removing multiple meta-commentary lines."""
     text = """Sure!
 Here's an improved version:
@@ -82,7 +82,7 @@ The actual answer content."""
     assert result == expected
 
 
-def test_case_insensitive_matching():
+def test_case_insensitive_matching() -> None:
     """Test case insensitive matching."""
     text = """SURE, HERE IS MY IMPROVED ANSWER:
 
@@ -93,7 +93,7 @@ The actual content."""
     assert result == expected
 
 
-def test_empty_or_whitespace_only_input():
+def test_empty_or_whitespace_only_input() -> None:
     """Test empty or whitespace-only input."""
     text = "   \n\n   "
     result = _strip_meta_commentary(text, logger=logger)

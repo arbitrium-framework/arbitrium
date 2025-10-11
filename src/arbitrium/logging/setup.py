@@ -40,7 +40,12 @@ class ColorFormatter(logging.Formatter):
     # Model colors (imported from display.py)
     MODEL_COLORS: ClassVar[dict[str, str]] = {}
 
-    def __init__(self, fmt: str | None = None, datefmt: str | None = None, include_module: bool = True) -> None:
+    def __init__(
+        self,
+        fmt: str | None = None,
+        datefmt: str | None = None,
+        include_module: bool = True,
+    ) -> None:
         """Initialize the formatter with format string."""
         super().__init__(fmt, datefmt)
         self.include_module = include_module
@@ -66,20 +71,9 @@ class ColorFormatter(logging.Formatter):
         original_msg = super().format(record)
 
         # Build context parts from record attributes (set by ContextFilter)
-        context_parts = []
+        from arbitrium.logging.structured import build_context_parts
 
-        # Check for context attributes (set by ContextFilter)
-        if hasattr(record, "run_id") and record.run_id:
-            context_parts.append(f"run:{record.run_id}")
-
-        if hasattr(record, "task_id") and record.task_id:
-            context_parts.append(f"task:{record.task_id}")
-
-        if hasattr(record, "phase") and record.phase:
-            context_parts.append(f"phase:{record.phase}")
-
-        if hasattr(record, "model") and record.model:
-            context_parts.append(f"model:{record.model}")
+        context_parts = build_context_parts(record)
 
         # Add module info if enabled
         if self.include_module and hasattr(record, "module"):
@@ -90,7 +84,12 @@ class ColorFormatter(logging.Formatter):
             # Find the end of the level marker
             level_end = original_msg.find("]") + 1
             context_prefix = "[" + "] [".join(context_parts) + "] "
-            original_msg = original_msg[:level_end] + " " + context_prefix + original_msg[level_end:].lstrip()
+            original_msg = (
+                original_msg[:level_end]
+                + " "
+                + context_prefix
+                + original_msg[level_end:].lstrip()
+            )
         elif context_parts:
             context_prefix = "[" + "] [".join(context_parts) + "] "
             original_msg = context_prefix + original_msg
@@ -105,7 +104,12 @@ class ColorFormatter(logging.Formatter):
 
             return strip_ansi_codes(original_msg)
 
-    def _format_display(self, record: logging.LogRecord, display_type: str, should_colorize: bool) -> str:
+    def _format_display(
+        self,
+        record: logging.LogRecord,
+        display_type: str,
+        should_colorize: bool,
+    ) -> str:
         """Format special display types (headers, model responses, etc)."""
         message = record.getMessage()
 
@@ -125,10 +129,17 @@ class ColorFormatter(logging.Formatter):
         elif display_type == "model_response":
             # Format model response with color
             model_name = getattr(record, "model_name", "Unknown")
-            color = self.MODEL_COLORS.get(model_name, Fore.WHITE) if should_colorize else ""
+            color = (
+                self.MODEL_COLORS.get(model_name, Fore.WHITE)
+                if should_colorize
+                else ""
+            )
             reset = Style.RESET_ALL if should_colorize else ""
 
-            lines = [f"\n{color}Model: {model_name}{reset}", f"{color}Response:{reset}"]
+            lines = [
+                f"\n{color}Model: {model_name}{reset}",
+                f"{color}Response:{reset}",
+            ]
             for line in message.split("\n"):
                 lines.append(f"{color}{line}{reset}")
             lines.append(f"{color}{'-' * 20}{reset}")
@@ -176,7 +187,9 @@ def _validate_log_file_path(log_file: str | None) -> str | None:
 
             # Check if directory is writable
             if not os.access(log_dir, os.W_OK):
-                print(f"Warning: Log directory {log_dir} is not writable. Logs will not be saved to file.")
+                print(
+                    f"Warning: Log directory {log_dir} is not writable. Logs will not be saved to file."
+                )
                 return None
         return log_file
     except OSError as e:
@@ -197,8 +210,12 @@ def _create_file_handler(
 ) -> logging.FileHandler | None:
     """Create and test file handler, return None if it fails."""
     try:
-        file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
-        file_handler.setLevel(logging.DEBUG)  # Save all logs to file regardless of level
+        file_handler = logging.FileHandler(
+            log_file, mode="a", encoding="utf-8"
+        )
+        file_handler.setLevel(
+            logging.DEBUG
+        )  # Save all logs to file regardless of level
 
         # Choose formatter based on format preference
         if json_format:
@@ -208,7 +225,9 @@ def _create_file_handler(
         elif include_module:
             from arbitrium.logging.structured import StructuredFormatter
 
-            file_handler.setFormatter(StructuredFormatter(file_format, include_module=include_module))
+            file_handler.setFormatter(
+                StructuredFormatter(file_format, include_module=include_module)
+            )
         else:
             file_handler.setFormatter(logging.Formatter(file_format))
 
@@ -228,17 +247,23 @@ def _create_file_handler(
             )
             file_handler.emit(test_record)
         except Exception as test_error:
-            raise OSError(f"Error writing to log file: {test_error!s}") from test_error
+            raise OSError(
+                f"Error writing to log file: {test_error!s}"
+            ) from test_error
 
         return file_handler
     except OSError as file_error:
-        print(f"❌ CRITICAL ERROR: Cannot open log file {log_file}: {file_error!s}")
+        print(
+            f"❌ CRITICAL ERROR: Cannot open log file {log_file}: {file_error!s}"
+        )
         print("❌ MODEL RESPONSES WILL NOT BE SAVED TO FILE!")
         print("❌ This means expensive API calls could be lost!")
         print("Continuing with console logging only.")
         return None
     except Exception as e:
-        print(f"❌ CRITICAL ERROR: Unexpected error setting up file logging: {e!s}")
+        print(
+            f"❌ CRITICAL ERROR: Unexpected error setting up file logging: {e!s}"
+        )
         print("❌ MODEL RESPONSES WILL NOT BE SAVED TO FILE!")
         print("❌ This means expensive API calls could be lost!")
         print("Continuing with console logging only.")
@@ -301,7 +326,7 @@ def setup_logging(
         from datetime import datetime
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = f"arbitrium_logs_{timestamp}.log"
+        log_file = f"arbitrium_{timestamp}_logs.log"
 
     # Validate log file path
     log_file = _validate_log_file_path(log_file)
@@ -329,7 +354,9 @@ def setup_logging(
 
     # Format strings
     console_format = "[%(levelname)s] %(message)s"  # Cleaner console output
-    file_format = "%(asctime)s [%(levelname)s] %(message)s"  # Full timestamp for files
+    file_format = (
+        "%(asctime)s [%(levelname)s] %(message)s"  # Full timestamp for files
+    )
 
     # Create separate duplicate filters for console and file
     console_duplicate_filter = DuplicateFilter()
@@ -344,7 +371,9 @@ def setup_logging(
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)
     # Always use ColorFormatter for console (human-readable)
-    console_handler.setFormatter(ColorFormatter(console_format, include_module=include_module))
+    console_handler.setFormatter(
+        ColorFormatter(console_format, include_module=include_module)
+    )
     console_handler.addFilter(console_duplicate_filter)
     console_handler.addFilter(context_filter)
 

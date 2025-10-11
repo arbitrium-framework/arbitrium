@@ -2,20 +2,30 @@
 root_package = arbitrium
 include_external_packages = False
 
-[importlinter:contract:interfaces-are-leaf]
-name = Interfaces layer should not import from other layers
+[importlinter:contract:config-independence]
+name = Config layer should not depend on application logic
 type = forbidden
 source_modules =
-    arbitrium.interfaces
+    arbitrium.config
 forbidden_modules =
     arbitrium.core
     arbitrium.models
-    arbitrium.runners
+    arbitrium.arbitrium
 
-[importlinter:contract:models-no-runners]
-name = Models should not import from runners
+[importlinter:contract:utils-independence]
+name = Utils should be reusable and not depend on domain logic
+type = forbidden
+source_modules =
+    arbitrium.utils
+forbidden_modules =
+    arbitrium.core
+    arbitrium.arbitrium
+
+[importlinter:contract:models-no-core]
+name = Models should not depend on tournament/comparison logic
 type = forbidden
 source_modules =
     arbitrium.models
 forbidden_modules =
-    arbitrium.runners
+    arbitrium.core.tournament
+    arbitrium.core.comparison

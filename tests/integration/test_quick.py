@@ -5,23 +5,27 @@ import argparse
 import asyncio
 import sys
 
-from arbitrium.config.loader import Config
-from arbitrium.core.comparison import ModelComparison
+from arbitrium import Arbitrium
 from arbitrium.logging import get_contextual_logger, setup_logging
-from arbitrium.models.factory import create_models_from_config
-from arbitrium.utils.display import Display
 
 
 async def main() -> None:
     """Run a quick integration test of the tournament system."""
-    parser = argparse.ArgumentParser(description="Quick integration test of Arbitrium Framework tournament")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging (DEBUG level)")
+    parser = argparse.ArgumentParser(
+        description="Quick integration test of Arbitrium Framework tournament"
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose logging (DEBUG level)",
+    )
     parser.add_argument(
         "--config",
         "-c",
         type=str,
-        default="benchmarks/config.benchmark.yml",
-        help="Path to config file (default: benchmarks/config.benchmark.yml)",
+        default="config.example.yml",
+        help="Path to config file (default: config.example.yml)",
     )
     parser.add_argument(
         "--question",
@@ -37,33 +41,30 @@ async def main() -> None:
     logger = get_contextual_logger("test_quick")
 
     logger.info(f"Loading config from: {args.config}")
-    config = Config(args.config)
-    if not config.load():
-        logger.error(f"Failed to load config from {args.config}")
+
+    # Initialize Arbitrium
+    arbitrium = await Arbitrium.from_config(config_path=args.config)
+
+    if not arbitrium.is_ready:
+        logger.error("No healthy models available")
         sys.exit(1)
 
-    logger.info("Initializing models...")
-    models = create_models_from_config(config.config_data.get("models", {}))
-    for key, model in models.items():
+    logger.info("Models initialized:")
+    for key, model in arbitrium.healthy_models.items():
         logger.info(f"  - {key}: {model.display_name}")
-
-    logger.info("Starting tournament...")
-    display = Display()
-    comparison = ModelComparison(
-        config=config.config_data,
-        models=models,  # type: ignore[arg-type]
-        display=display,
-    )
 
     question = args.question
     logger.info(f"Question: {question}")
 
-    result = await comparison.run(question)
+    logger.info("Starting tournament...")
+    result, metrics = await arbitrium.run_tournament(question)
 
     print(f"\n{'=' * 80}")
     print("TOURNAMENT RESULT:")
     print("=" * 80)
     print(result)
+    print(f"\nChampion: {metrics['champion_model']}")
+    print(f"Cost: ${metrics['total_cost']:.4f}")
 
 
 if __name__ == "__main__":

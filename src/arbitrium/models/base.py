@@ -33,7 +33,17 @@ def analyze_error_response(response: Any) -> tuple[bool, str]:
         error_msg = str(response.error).lower()
         error_type = getattr(response, "error_type", None)
         if error_type:
-            return error_type in ["rate_limit", "timeout", "connection", "service", "overloaded"], error_type
+            return (
+                error_type
+                in [
+                    "rate_limit",
+                    "timeout",
+                    "connection",
+                    "service",
+                    "overloaded",
+                ],
+                error_type,
+            )
     elif isinstance(response, Exception):
         error_msg = str(response).lower()
         if "notfounderror" in type(response).__name__.lower():
@@ -41,7 +51,14 @@ def analyze_error_response(response: Any) -> tuple[bool, str]:
         if "authenticationerror" in type(response).__name__.lower():
             return False, "authentication"
 
-    if any(p in error_msg for p in ["permission_denied", "service_disabled", "api has not been used"]):
+    if any(
+        p in error_msg
+        for p in [
+            "permission_denied",
+            "service_disabled",
+            "api has not been used",
+        ]
+    ):
         return False, "permission_denied"
 
     for error_type, patterns in ERROR_PATTERNS.items():
@@ -73,18 +90,27 @@ async def _calculate_retry_delay(
     }
 
     provider = provider.lower() if provider else "default"
-    multiplier_value = backoff_multipliers.get(error_type, backoff_multipliers["general"])
+    multiplier_value = backoff_multipliers.get(
+        error_type, backoff_multipliers["general"]
+    )
 
     multiplier: float
     if isinstance(multiplier_value, dict):
-        provider_mult = multiplier_value.get(provider, multiplier_value["default"])
+        provider_mult = multiplier_value.get(
+            provider, multiplier_value["default"]
+        )
         multiplier = float(provider_mult) if provider_mult is not None else 1.5
     elif isinstance(multiplier_value, (int, float)):
         multiplier = float(multiplier_value)
     else:
         multiplier = 1.5  # Default fallback
 
-    jitter_range = 0.05 if error_type in ["rate_limit", "overloaded"] and provider == "anthropic" else 0.1
+    jitter_range = (
+        0.05
+        if error_type in ["rate_limit", "overloaded"]
+        and provider == "anthropic"
+        else 0.1
+    )
     jitter_factor = 1.0 + random.uniform(-jitter_range, jitter_range)
     jittered_delay = min(current_delay * multiplier, max_delay) * jitter_factor
 
@@ -95,10 +121,14 @@ async def _calculate_retry_delay(
         return None
 
     actual_delay = min(jittered_delay, remaining_time)
-    min_delay_factor = 0.5 if error_type in ["rate_limit", "overloaded"] else 0.25
+    min_delay_factor = (
+        0.5 if error_type in ["rate_limit", "overloaded"] else 0.25
+    )
     if actual_delay < initial_delay * min_delay_factor:
         if logger:
-            logger.error("Not enough time for proper retry delay. Stopping retries.")
+            logger.error(
+                "Not enough time for proper retry delay. Stopping retries."
+            )
         return None
 
     await asyncio.sleep(actual_delay)
@@ -134,12 +164,19 @@ class ModelResponse:
         self.is_successful = error is None
 
     @classmethod
-    def create_success(cls, content: str, cost: float = 0.0) -> "ModelResponse":
+    def create_success(
+        cls, content: str, cost: float = 0.0
+    ) -> "ModelResponse":
         """Create a successful response."""
         return cls(content=content, cost=cost)
 
     @classmethod
-    def create_error(cls, error_message: str, error_type: str | None = None, provider: str | None = None) -> "ModelResponse":
+    def create_error(
+        cls,
+        error_message: str,
+        error_type: str | None = None,
+        provider: str | None = None,
+    ) -> "ModelResponse":
         """Create an error response."""
         return cls(
             content=f"Error: {error_message}",
@@ -224,12 +261,15 @@ class LiteLLMModel(BaseModel):
         provider: str,
         temperature: float,
         max_tokens: int = 1024,
-        context_window: int | None = None,  # Kept for compatibility with BaseModel
+        context_window: (
+            int | None
+        ) = None,  # Kept for compatibility with BaseModel
         reasoning: bool = False,
         reasoning_effort: str | None = None,
         model_config: dict[str, Any] | None = None,
         use_llm_compression: bool = True,
         compression_model: str = "ollama/qwen:1.8b",
+        system_prompt: str | None = None,
     ):
         """Initialize a LiteLLM-backed model."""
         super().__init__(
@@ -245,15 +285,24 @@ class LiteLLMModel(BaseModel):
         )
         self.reasoning = reasoning
         self.reasoning_effort = reasoning_effort  # "low", "medium", "high"
+        self.system_prompt = (
+            system_prompt  # Optional system prompt for role-playing
+        )
 
         # Check if this model requires temperature=1.0
         # Models that require this should have force_temp_one: true in their YAML config
         # Example: o4-mini, o3-2025-04-16, etc.
-        self.requires_temp_one = model_config is not None and hasattr(model_config, "get") and model_config.get("force_temp_one", False)
+        self.requires_temp_one = (
+            model_config is not None
+            and hasattr(model_config, "get")
+            and model_config.get("force_temp_one", False)
+        )
 
         # Note: LiteLLM logging is centrally disabled in utils/structured_log.py
 
-    def _try_extract_openai_format(self, response: Any, logger: Any) -> str | None:
+    def _try_extract_openai_format(
+        self, response: Any, logger: Any
+    ) -> str | None:
         """Try to extract content from OpenAI/LiteLLM format."""
         if not hasattr(response, "choices") or not response.choices:
             return None
@@ -265,7 +314,9 @@ class LiteLLMModel(BaseModel):
             logger.debug(f"Failed to extract from choices object: {e}")
         return None
 
-    def _try_extract_dict_format(self, response: Any, logger: Any) -> str | None:
+    def _try_extract_dict_format(
+        self, response: Any, logger: Any
+    ) -> str | None:
         """Try to extract content from dict format."""
         if not isinstance(response, dict):
             return None
@@ -282,7 +333,12 @@ class LiteLLMModel(BaseModel):
         # Try Gemini dict format
         if "candidates" in response:
             try:
-                content_val: str | None = response.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text")
+                content_val: str | None = (
+                    response.get("candidates", [{}])[0]
+                    .get("content", {})
+                    .get("parts", [{}])[0]
+                    .get("text")
+                )
                 if content_val:
                     return content_val
             except (KeyError, IndexError, TypeError) as e:
@@ -290,7 +346,9 @@ class LiteLLMModel(BaseModel):
 
         return None
 
-    def _try_extract_gemini_format(self, response: Any, logger: Any) -> str | None:
+    def _try_extract_gemini_format(
+        self, response: Any, logger: Any
+    ) -> str | None:
         """Try to extract content from Gemini object format."""
         if not hasattr(response, "candidates") or not response.candidates:
             return None
@@ -304,7 +362,15 @@ class LiteLLMModel(BaseModel):
 
     def _try_extract_common_attrs(self, response: Any) -> str | None:
         """Try to extract content from common attribute names."""
-        for attr in ["content", "text", "completion", "answer", "response", "output", "result"]:
+        for attr in [
+            "content",
+            "text",
+            "completion",
+            "answer",
+            "response",
+            "output",
+            "result",
+        ]:
             if hasattr(response, attr):
                 value = getattr(response, attr)
                 if isinstance(value, str) and value.strip():
@@ -340,13 +406,19 @@ class LiteLLMModel(BaseModel):
         logger = _get_module_logger()
 
         # LiteLLM adds cost information to the response object
-        if hasattr(response, "_hidden_params") and hasattr(response._hidden_params, "response_cost"):
+        if hasattr(response, "_hidden_params") and hasattr(
+            response._hidden_params, "response_cost"
+        ):
             cost: float = response._hidden_params.response_cost
-            logger.info(f"💰 Cost extracted from _hidden_params.response_cost: ${cost:.4f}")
+            logger.info(
+                f"💰 Cost extracted from _hidden_params.response_cost: ${cost:.4f}"
+            )
             return cost
         if hasattr(response, "response_cost"):
             cost_val: float = response.response_cost
-            logger.info(f"💰 Cost extracted from response_cost: ${cost_val:.4f}")
+            logger.info(
+                f"💰 Cost extracted from response_cost: ${cost_val:.4f}"
+            )
             return cost_val
 
         # Enhanced fallback - try to extract from LiteLLM usage calculation
@@ -356,17 +428,25 @@ class LiteLLMModel(BaseModel):
                 import litellm
 
                 if hasattr(litellm, "completion_cost"):
-                    cost_calc: float = litellm.completion_cost(completion_response=response)
+                    cost_calc: float = litellm.completion_cost(
+                        completion_response=response
+                    )
                     if cost_calc and cost_calc > 0:
-                        logger.info(f"💰 Cost calculated via litellm.completion_cost: ${cost_calc:.4f}")
+                        logger.info(
+                            f"💰 Cost calculated via litellm.completion_cost: ${cost_calc:.4f}"
+                        )
                         return cost_calc
             except Exception as e:
-                logger.debug(f"Failed to calculate cost via litellm.completion_cost: {e}")
+                logger.debug(
+                    f"Failed to calculate cost via litellm.completion_cost: {e}"
+                )
 
         logger.debug("💰 No cost information found in response, returning 0.0")
         return 0.0
 
-    def _handle_prompt_size_validation(self, prompt: str, logger: Any) -> str | None:
+    def _handle_prompt_size_validation(
+        self, prompt: str, logger: Any
+    ) -> str | None:
         """Handle prompt size validation - DISABLED to preserve full prompts.
 
         Users pay for the full context, so we don't truncate anything.
@@ -376,16 +456,17 @@ class LiteLLMModel(BaseModel):
         return prompt
 
     def _clean_response_content(self, content: str, logger: Any) -> str:
-        """Clean response content by removing markdown formatting."""
-        from ..utils.context_validation import markdown_to_plain_text
+        """Clean response content - preserve markdown formatting.
 
-        try:
-            return markdown_to_plain_text(content.strip())
-        except Exception as e:
-            logger.debug(f"Markdown removal failed, using raw content: {e}")
-            return content.strip()
+        User pays for full content including markdown formatting.
+        Markdown is useful for readability and structure.
+        """
+        # Only strip whitespace, preserve all markdown formatting
+        return content.strip()
 
-    def _try_extract_content_from_response(self, response: Any, cost: float, logger: Any) -> ModelResponse | None:
+    def _try_extract_content_from_response(
+        self, response: Any, cost: float, logger: Any
+    ) -> ModelResponse | None:
         """Try to extract content from response, return ModelResponse if successful."""
         content = self._extract_response_content(response)
 
@@ -394,12 +475,18 @@ class LiteLLMModel(BaseModel):
             return ModelResponse.create_success(cleaned_content, cost=cost)
 
         # Try fallback
-        logger.warning(f"{self.display_name} returned a response but content extraction failed. Using str() fallback.")
-        logger.debug(f"Response object type: {type(response)}, has choices: {hasattr(response, 'choices')}")
+        logger.warning(
+            f"{self.display_name} returned a response but content extraction failed. Using str() fallback."
+        )
+        logger.debug(
+            f"Response object type: {type(response)}, has choices: {hasattr(response, 'choices')}"
+        )
 
         fallback_content = str(response)
         if fallback_content and len(fallback_content.strip()) > 10:
-            return ModelResponse.create_success(fallback_content.strip(), cost=cost)
+            return ModelResponse.create_success(
+                fallback_content.strip(), cost=cost
+            )
 
         return None
 
@@ -412,13 +499,25 @@ class LiteLLMModel(BaseModel):
         # Handle prompt size validation
         validated_prompt = self._handle_prompt_size_validation(prompt, logger)
         if validated_prompt is None:
-            method = "LLM compression" if self.use_llm_compression else "truncation"
-            return ModelResponse.create_error(f"Prompt too large even after {method}")
+            method = (
+                "LLM compression" if self.use_llm_compression else "truncation"
+            )
+            return ModelResponse.create_error(
+                f"Prompt too large even after {method}"
+            )
         prompt = validated_prompt
 
         # Prepare parameters
-        temperature = 1.0 if self.requires_temp_one else float(self.temperature)
-        messages = [{"role": "user", "content": prompt}]
+        temperature = (
+            1.0 if self.requires_temp_one else float(self.temperature)
+        )
+
+        # Build messages array with optional system prompt
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
         params = {
             "model": self.model_name,
             "messages": messages,
@@ -428,19 +527,28 @@ class LiteLLMModel(BaseModel):
 
         if self.reasoning_effort:
             params["reasoning_effort"] = self.reasoning_effort
-            logger.debug(f"Using reasoning_effort={self.reasoning_effort} for {self.display_name}")
+            logger.debug(
+                f"Using reasoning_effort={self.reasoning_effort} for {self.display_name}"
+            )
 
         try:
-            response = await asyncio.wait_for(litellm.acompletion(**params), timeout=600)
+            response = await asyncio.wait_for(
+                litellm.acompletion(**params), timeout=600
+            )
             cost = self._extract_response_cost(response)
 
             # Try to extract and clean content
-            model_response = self._try_extract_content_from_response(response, cost, logger)
+            model_response = self._try_extract_content_from_response(
+                response, cost, logger
+            )
             if model_response:
                 return model_response
 
             # Only error if truly nothing useful
-            raise ModelResponseError(f"Model {self.display_name} returned empty or unusable response", model_key=self.model_key)
+            raise ModelResponseError(
+                f"Model {self.display_name} returned empty or unusable response",
+                model_key=self.model_key,
+            )
         except (
             litellm.exceptions.RateLimitError,
             litellm.exceptions.Timeout,
@@ -450,31 +558,59 @@ class LiteLLMModel(BaseModel):
             ModelResponseError,
         ) as e:
             error_type, error_message = self._classify_exception(e)
-            logger.warning(f"{error_message}. model={self.model_name}, provider={self.provider}")
-            return ModelResponse.create_error(error_message, error_type=error_type, provider=self.provider)
+            logger.warning(
+                f"{error_message}. model={self.model_name}, provider={self.provider}"
+            )
+            return ModelResponse.create_error(
+                error_message, error_type=error_type, provider=self.provider
+            )
         except Exception as e:
             error_type, error_message = self._classify_exception(e)
-            logger.error(f"API error with {self.display_name}: {error_message}", exc_info=True)
-            return ModelResponse.create_error(error_message, error_type=error_type, provider=self.provider)
+            logger.error(
+                f"API error with {self.display_name}: {error_message}",
+                exc_info=True,
+            )
+            return ModelResponse.create_error(
+                error_message, error_type=error_type, provider=self.provider
+            )
 
     def _classify_exception(self, exc: Exception) -> tuple[str, str]:
         """Classifies an exception into an error type and message."""
         if isinstance(exc, litellm.exceptions.RateLimitError):
-            return "rate_limit", f"Rate limit exceeded with {self.display_name}: {exc}"
+            return (
+                "rate_limit",
+                f"Rate limit exceeded with {self.display_name}: {exc}",
+            )
         if isinstance(exc, (litellm.exceptions.Timeout, asyncio.TimeoutError)):
-            return "timeout", f"Request timed out for {self.display_name}: {exc}"
+            return (
+                "timeout",
+                f"Request timed out for {self.display_name}: {exc}",
+            )
         if isinstance(exc, litellm.exceptions.AuthenticationError):
-            return "authentication", f"Authentication failed with {self.display_name}: {exc}"
+            return (
+                "authentication",
+                f"Authentication failed with {self.display_name}: {exc}",
+            )
         if isinstance(exc, litellm.exceptions.ServiceUnavailableError):
-            return "service_unavailable", f"Service unavailable for {self.display_name}: {exc}"
+            return (
+                "service_unavailable",
+                f"Service unavailable for {self.display_name}: {exc}",
+            )
         if isinstance(exc, litellm.exceptions.InternalServerError):
-            return ("overloaded" if "overload" in str(exc).lower() else "service"), f"Server error with {self.display_name}: {exc}"
+            return (
+                "overloaded" if "overload" in str(exc).lower() else "service"
+            ), f"Server error with {self.display_name}: {exc}"
         if isinstance(exc, ModelResponseError):
             return "model_response_error", str(exc)
-        return "general", f"Unexpected API error with {self.display_name}: {exc}"
+        return (
+            "general",
+            f"Unexpected API error with {self.display_name}: {exc}",
+        )
 
     @classmethod
-    def _convert_info_to_dict(cls, info: Any, model_name: str, logger: Any) -> dict[str, Any]:
+    def _convert_info_to_dict(
+        cls, info: Any, model_name: str, logger: Any
+    ) -> dict[str, Any]:
         """Convert model info object to dictionary."""
         if isinstance(info, dict):
             return info
@@ -509,14 +645,20 @@ class LiteLLMModel(BaseModel):
         logger = _get_module_logger()
         try:
             info = litellm.get_model_info(model_name)
-            logger.debug(f"Retrieved model info from LiteLLM for {model_name}: {info}")
+            logger.debug(
+                f"Retrieved model info from LiteLLM for {model_name}: {info}"
+            )
             return cls._convert_info_to_dict(info, model_name, logger)
         except Exception as e:
-            logger.debug(f"Could not retrieve model info from LiteLLM for {model_name}: {e}")
+            logger.debug(
+                f"Could not retrieve model info from LiteLLM for {model_name}: {e}"
+            )
             return {}
 
     @classmethod
-    def from_config(cls, model_key: str, model_config: dict[str, Any]) -> "LiteLLMModel":
+    def from_config(
+        cls, model_key: str, model_config: dict[str, Any]
+    ) -> "LiteLLMModel":
         """
         Create a model instance from configuration.
 
@@ -535,7 +677,9 @@ class LiteLLMModel(BaseModel):
         required_fields = ["model_name", "provider"]
         for field in required_fields:
             if field not in model_config:
-                raise ValueError(f"Required field '{field}' missing in model configuration for {model_key}")
+                raise ValueError(
+                    f"Required field '{field}' missing in model configuration for {model_key}"
+                )
 
         model_name = model_config["model_name"]
 
@@ -543,10 +687,15 @@ class LiteLLMModel(BaseModel):
         litellm_info = cls._get_model_info_from_litellm(model_name)
 
         # Auto-detect context_window (input tokens limit)
-        if "context_window" not in model_config or model_config["context_window"] is None:
+        if (
+            "context_window" not in model_config
+            or model_config["context_window"] is None
+        ):
             context_window = litellm_info.get("max_input_tokens")
             if context_window:
-                logger.info(f"Auto-detected context_window={context_window} for {model_key} from LiteLLM")
+                logger.info(
+                    f"Auto-detected context_window={context_window} for {model_key} from LiteLLM"
+                )
                 model_config["context_window"] = context_window
             else:
                 raise ValueError(
@@ -556,13 +705,20 @@ class LiteLLMModel(BaseModel):
 
         # Auto-detect max_tokens (default output tokens)
         # Cap at 25% of context window to leave room for prompt and safety margin
-        if "max_tokens" not in model_config or model_config["max_tokens"] is None:
-            max_output_tokens = litellm_info.get("max_output_tokens") or litellm_info.get("max_tokens")
+        if (
+            "max_tokens" not in model_config
+            or model_config["max_tokens"] is None
+        ):
+            max_output_tokens = litellm_info.get(
+                "max_output_tokens"
+            ) or litellm_info.get("max_tokens")
             if max_output_tokens:
                 # If max_output_tokens >= context_window, it's likely wrong (same value used for both)
                 # Cap at 25% of context window for safety
                 context_win = model_config.get("context_window", 128000)
-                safe_max_tokens = min(max_output_tokens, int(context_win * 0.25))
+                safe_max_tokens = min(
+                    max_output_tokens, int(context_win * 0.25)
+                )
                 logger.info(
                     f"Auto-detected max_tokens={safe_max_tokens} for {model_key} (from LiteLLM: {max_output_tokens}, capped at 25% of context)"
                 )
@@ -575,26 +731,42 @@ class LiteLLMModel(BaseModel):
 
         # Temperature is required in config
         if "temperature" not in model_config:
-            raise ValueError(f"temperature is required in model configuration for {model_key}")
+            raise ValueError(
+                f"temperature is required in model configuration for {model_key}"
+            )
 
         # Check if model supports reasoning_effort
         reasoning_effort = model_config.get("reasoning_effort")
         if reasoning_effort:
             supported_efforts = ["low", "medium", "high"]
             if reasoning_effort not in supported_efforts:
-                logger.warning(f"Invalid reasoning_effort '{reasoning_effort}' for {model_key}. Must be one of {supported_efforts}")
+                logger.warning(
+                    f"Invalid reasoning_effort '{reasoning_effort}' for {model_key}. Must be one of {supported_efforts}"
+                )
                 reasoning_effort = None
             else:
-                logger.info(f"Using reasoning_effort={reasoning_effort} for {model_key}")
+                logger.info(
+                    f"Using reasoning_effort={reasoning_effort} for {model_key}"
+                )
 
         # Get LLM compression settings from config
         use_llm_compression = model_config.get("llm_compression", True)
-        compression_model = model_config.get("compression_model", "ollama/qwen:1.8b")
+        compression_model = model_config.get(
+            "compression_model", "ollama/qwen:1.8b"
+        )
+
+        # Get system_prompt from config (optional)
+        system_prompt = model_config.get("system_prompt")
+        if system_prompt:
+            logger.info(
+                f"Using system_prompt for {model_key}: {system_prompt[:100]}..."
+            )
 
         return cls(
             model_key=model_key,
             model_name=model_config["model_name"],
-            display_name=model_config.get("display_name") or model_config["model_name"],
+            display_name=model_config.get("display_name")
+            or model_config["model_name"],
             provider=model_config["provider"],
             max_tokens=model_config["max_tokens"],
             temperature=float(model_config["temperature"]),
@@ -604,14 +776,19 @@ class LiteLLMModel(BaseModel):
             model_config=model_config,
             use_llm_compression=use_llm_compression,
             compression_model=compression_model,
+            system_prompt=system_prompt,
         )
 
 
-def _check_timeout_exceeded(start_time: float, total_timeout: int, logger: Any | None) -> bool:
+def _check_timeout_exceeded(
+    start_time: float, total_timeout: int, logger: Any | None
+) -> bool:
     """Check if total timeout has been exceeded."""
     if time.monotonic() - start_time > total_timeout:
         if logger:
-            logger.error(f"Total timeout ({total_timeout}s) exceeded. Stopping retries.")
+            logger.error(
+                f"Total timeout ({total_timeout}s) exceeded. Stopping retries."
+            )
         return True
     return False
 
@@ -634,10 +811,19 @@ async def _handle_retry_response(
         return None
 
     if logger:
-        logger.warning(f"Attempt {attempt}/{max_attempts} failed for {provider}. Retrying... Error: {response.error}")
+        logger.warning(
+            f"Attempt {attempt}/{max_attempts} failed for {provider}. Retrying... Error: {response.error}"
+        )
 
     next_delay = await _calculate_retry_delay(
-        current_delay, start_time, total_timeout, initial_delay_val, max_delay_val, logger, error_type, provider
+        current_delay,
+        start_time,
+        total_timeout,
+        initial_delay_val,
+        max_delay_val,
+        logger,
+        error_type,
+        provider,
     )
     return next_delay
 
@@ -659,11 +845,20 @@ async def _handle_retry_exception(
         return None
 
     if logger:
-        logger.warning(f"Attempt {attempt}/{max_attempts} failed for {provider} with exception. Retrying... Error: {exception}")
+        logger.warning(
+            f"Attempt {attempt}/{max_attempts} failed for {provider} with exception. Retrying... Error: {exception}"
+        )
 
     _, error_type = analyze_error_response(exception)
     next_delay = await _calculate_retry_delay(
-        current_delay, start_time, total_timeout, initial_delay_val, max_delay_val, logger, error_type, provider
+        current_delay,
+        start_time,
+        total_timeout,
+        initial_delay_val,
+        max_delay_val,
+        logger,
+        error_type,
+        provider,
     )
     return next_delay
 
@@ -682,15 +877,23 @@ async def run_with_retry(
 
     provider = model.provider.lower() if model.provider else "default"
     provider_config = provider_delays.get(provider, provider_delays["default"])
-    initial_delay_val = initial_delay if initial_delay is not None else provider_config["initial"]
-    max_delay_val = max_delay if max_delay is not None else provider_config["max"]
+    initial_delay_val = (
+        initial_delay
+        if initial_delay is not None
+        else provider_config["initial"]
+    )
+    max_delay_val = (
+        max_delay if max_delay is not None else provider_config["max"]
+    )
 
     current_delay: float = float(initial_delay_val)
     start_time = time.monotonic()
 
     for attempt in range(1, max_attempts + 1):
         if _check_timeout_exceeded(start_time, total_timeout, logger):
-            return ModelResponse.create_error(f"Exceeded total timeout of {total_timeout}s")
+            return ModelResponse.create_error(
+                f"Exceeded total timeout of {total_timeout}s"
+            )
 
         try:
             response = await model.generate(prompt)
@@ -728,7 +931,11 @@ async def run_with_retry(
             )
             if next_delay is None:
                 _, error_type = analyze_error_response(e)
-                return ModelResponse.create_error(str(e), error_type=error_type, provider=provider)
+                return ModelResponse.create_error(
+                    str(e), error_type=error_type, provider=provider
+                )
             current_delay = next_delay
 
-    return ModelResponse.create_error("Max attempts reached without a successful response.")
+    return ModelResponse.create_error(
+        "Max attempts reached without a successful response."
+    )

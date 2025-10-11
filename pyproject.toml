@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "arbitrium"
+name = "arbitrium-framework"
 dynamic = ["version"]
 authors = [
   { name="Nikolay Eremeev", email="nikolay.eremeev@outlook.com" },
@@ -24,13 +24,18 @@ dependencies = [
     "httpx~=0.28.0",
     "tiktoken>=0.7.0",
     "aiofiles~=24.1.0",
-    "scikit-learn~=1.5.0",
-    "datasets~=2.14.0",
+    "scikit-learn~=1.7.2",
     "markdown-it-py~=4.0",
     "google-auth~=2.41",
 ]
 
 [project.optional-dependencies]
+bench = [
+    "datasets~=4.2.0",
+    "scipy~=1.12",      # Optional: for advanced stats (we use exact binomial without it)
+    "pandas~=2.2",      # Optional: for convenient result analysis
+]
+
 dev = [
     "pytest~=8.0",
     "pytest-asyncio~=1.2",
@@ -38,10 +43,13 @@ dev = [
     "pytest-xdist~=3.0",
     "hypothesis~=6.0",
     "coverage[toml]~=7.0",
-    "black~=24.10",
-    "isort~=5.12",
-    "ruff~=0.6.9",
+    "black>=24.10,<26.0",
+    "isort~=6.1",
+    "ruff>=0.6.9,<0.15.0",
     "mypy~=1.11",
+    "types-colorama~=0.4",
+    "types-PyYAML~=6.0",
+    "types-aiofiles~=25.1",
     "pre-commit~=4.3",
     "mutmut~=3.3",
     "radon~=6.0",
@@ -56,7 +64,7 @@ dev = [
 "Documentation" = "https://github.com/arbitrium-framework/arbitrium#readme"
 
 [project.scripts]
-arbitrium = "arbitrium.runners.cli:run_from_cli"
+arbitrium = "arbitrium.cli.main:run_from_cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -68,7 +76,7 @@ version = {attr = "arbitrium.__about__.__version__"}
 arbitrium = ["*.yml", "*.yaml", "py.typed"]
 
 [tool.black]
-line-length = 150
+line-length = 79
 target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = '''
@@ -87,7 +95,7 @@ extend-exclude = '''
 
 [tool.isort]
 profile = "black"
-line_length = 150
+line_length = 79
 multi_line_output = 3
 include_trailing_comma = true
 force_grid_wrap = 0
@@ -155,9 +163,9 @@ derandomize = true
 deadline = 2000  # 2 seconds per test case
 
 [tool.ruff]
-line-length = 150
+line-length = 79
 target-version = "py310"
-exclude = ["docs/", "site/", "build/", "dist/"]
+exclude = ["docs/", "site/", "build/", "dist/", "*.ipynb"]
 
 [tool.ruff.lint]
 select = ["F", "E9", "W6", "B", "C4", "PLE", "PLW", "RUF"]
@@ -174,8 +182,17 @@ disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
 files = ["src/"]
-exclude = ["^tests/", "^docs/", "^scripts/", "^benchmarks/"]
+exclude = ["tests/", "^docs/", "^benchmarks/"]
 
 [[tool.mypy.overrides]]
 module = ["litellm", "litellm.*", "sklearn", "sklearn.*", "markdown_it", "markdown_it.*"]
 ignore_missing_imports = true
+disable_error_code = ["attr-defined"]
+
+# Mutation testing configuration
+# Evidence: Mutation score correlates with real fault detection
+[tool.mutmut]
+paths_to_mutate = ["src/arbitrium/core/"]
+tests_dir = "tests/"
+runner = "pytest"
+backup = false

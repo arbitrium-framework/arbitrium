@@ -61,6 +61,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Try It Now: try-it-now.md
   - ROI Calculator: calculator.html
 
 extra:

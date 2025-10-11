@@ -45,7 +45,9 @@ for i in range(1, 100):  # Support up to 100 models
 for i in range(26):  # A-Z
     color_index = i % len(COLORS)
     style_index = (i // len(COLORS)) % len(STYLES)
-    MODEL_COLORS[f"Model {chr(65 + i)}"] = COLORS[color_index] + STYLES[style_index]
+    MODEL_COLORS[f"Model {chr(65 + i)}"] = (
+        COLORS[color_index] + STYLES[style_index]
+    )
 
 # Add special system colors
 MODEL_COLORS["warning"] = Fore.YELLOW
@@ -60,7 +62,11 @@ DEFAULT_COLOR = Fore.WHITE
 class Display:
     """Handles display formatting and colorization for Arbitrium Framework."""
 
-    def __init__(self, use_color: bool = True, model_colors: dict[str, str] | None = None):
+    def __init__(
+        self,
+        use_color: bool = True,
+        model_colors: dict[str, str] | None = None,
+    ):
         """Initialize the display manager.
 
         Args:
@@ -96,7 +102,9 @@ class Display:
         color: str = self.model_colors.get(model_name, DEFAULT_COLOR)
         return color
 
-    def print(self, text: str, level_or_color: str = DEFAULT_COLOR, end: str = "\n") -> None:
+    def print(
+        self, text: str, level_or_color: str = DEFAULT_COLOR, end: str = "\n"
+    ) -> None:
         """Prints text through the logging system with proper level and formatting.
 
         Args:
@@ -117,7 +125,9 @@ class Display:
             if level_or_color in level_map:
                 log_level = level_map[level_or_color]
                 # Clean text for consistent logging (remove emojis for file logs)
-                clean_text = text.encode("ascii", errors="replace").decode("ascii")
+                clean_text = text.encode("ascii", errors="replace").decode(
+                    "ascii"
+                )
                 # Use the appropriate method based on log level
                 if log_level == logging.DEBUG:
                     logger.debug(clean_text)
@@ -154,7 +164,9 @@ class Display:
         for line in lines:
             self.print(line, color)
 
-    def print_model_response(self, model_name: str, response_text: str) -> None:
+    def print_model_response(
+        self, model_name: str, response_text: str
+    ) -> None:
         """Prints a model's response with consistent color coding throughout.
 
         Note: This prints to console only, not to file (to avoid duplicate logging).
@@ -179,7 +191,9 @@ class Display:
             print(response_text)
             print("-" * 20)
 
-    def print_header(self, text: str, char: str = "=", color: str = Fore.CYAN) -> None:
+    def print_header(
+        self, text: str, char: str = "=", color: str = Fore.CYAN
+    ) -> None:
         """Prints a header with decoration.
 
         Args:
@@ -191,7 +205,9 @@ class Display:
         self.print(text, color)
         self.print(char * 50, color)
 
-    def print_section_header(self, text: str, color: str = DEFAULT_COLOR) -> None:
+    def print_section_header(
+        self, text: str, color: str = DEFAULT_COLOR
+    ) -> None:
         """Prints a section header.
 
         Args:

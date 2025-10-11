@@ -51,17 +51,23 @@ def ensure_directory_exists(directory_path: str) -> bool:
         return True
 
     except PermissionError as e:
-        logger.error(f"Permission error creating directory {directory_path}: {e!s}")
+        logger.error(
+            f"Permission error creating directory {directory_path}: {e!s}"
+        )
         return False
     except OSError as e:
         logger.error(f"OS error creating directory {directory_path}: {e!s}")
         return False
     except Exception as e:
-        logger.error(f"Unexpected error creating directory {directory_path}: {e!s}")
+        logger.error(
+            f"Unexpected error creating directory {directory_path}: {e!s}"
+        )
         return False
 
 
-def generate_unique_filename(base_path: str, prefix: str, extension: str = ".md") -> str:
+def generate_unique_filename(
+    base_path: str, prefix: str, extension: str = ".md"
+) -> str:
     """Generate a unique filename with high-precision timestamp.
 
     Args:
@@ -100,12 +106,16 @@ async def safe_write_async(
             shutil.copy2(path, backup_path)
 
         if atomic:
-            fd, temp_path = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+            fd, temp_path = tempfile.mkstemp(
+                dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+            )
             os.close(fd)  # Close immediately to avoid Windows lock issues
             try:
                 async with aiofiles.open(temp_path, mode=mode, encoding=encoding) as temp_file:  # type: ignore[call-overload]
                     await temp_file.write(content)
-                await asyncio.get_event_loop().run_in_executor(None, lambda: os.replace(temp_path, path))
+                await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: os.replace(temp_path, path)
+                )
             except Exception as e:
                 if os.path.exists(temp_path):
                     os.unlink(temp_path)
@@ -116,10 +126,14 @@ async def safe_write_async(
         return True
     except (UnicodeEncodeError, OSError) as e:
         logger.error(f"Error writing to {file_path}: {e}")
-        raise FileSystemError(f"Error writing to file: {e}", file_path=str(file_path)) from e
+        raise FileSystemError(
+            f"Error writing to file: {e}", file_path=str(file_path)
+        ) from e
 
 
-async def safe_read_async(file_path: str | Path, encoding: str = "utf-8") -> tuple[bool, str]:
+async def safe_read_async(
+    file_path: str | Path, encoding: str = "utf-8"
+) -> tuple[bool, str]:
     """Async version of safe_read. Read a file with robust error handling.
 
     Args:
@@ -156,9 +170,13 @@ async def safe_read_async(file_path: str | Path, encoding: str = "utf-8") -> tup
     except UnicodeDecodeError as e:
         # Try with a more lenient encoding as a fallback
         try:
-            async with aiofiles.open(path, "r", encoding="utf-8", errors="replace") as f:
+            async with aiofiles.open(
+                path, "r", encoding="utf-8", errors="replace"
+            ) as f:
                 content = await f.read()
-            logger.warning(f"Read {file_path} with encoding fallback due to: {e!s}")
+            logger.warning(
+                f"Read {file_path} with encoding fallback due to: {e!s}"
+            )
             return True, content
         except Exception as fallback_e:
             error_msg = f"Failed to read {file_path} even with encoding fallback: {fallback_e!s}"

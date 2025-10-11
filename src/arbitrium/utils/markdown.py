@@ -34,7 +34,9 @@ def sanitize_for_markdown(text: str, preserve_markdown: bool = True) -> str:
     return text
 
 
-def sanitize_content_dict(content: dict[str, Any], preserve_markdown: bool = True) -> dict[str, str]:
+def sanitize_content_dict(
+    content: dict[str, Any], preserve_markdown: bool = True
+) -> dict[str, str]:
     """
     Sanitize all string values in a content dictionary for safe markdown inclusion.
 
@@ -49,21 +51,32 @@ def sanitize_content_dict(content: dict[str, Any], preserve_markdown: bool = Tru
 
     for key, value in content.items():
         if isinstance(value, str):
-            sanitized_content[key] = sanitize_for_markdown(value, preserve_markdown)
+            sanitized_content[key] = sanitize_for_markdown(
+                value, preserve_markdown
+            )
         elif isinstance(value, dict):
             # Special handling for tournament_history - format as readable markdown
             if key == "tournament_history":
                 sanitized_content[key] = format_tournament_history(value)
             else:
-                sanitized_content[key] = sanitize_for_markdown(str(value), preserve_markdown)
+                sanitized_content[key] = sanitize_for_markdown(
+                    str(value), preserve_markdown
+                )
         else:
             # Convert non-string values to string and sanitize
-            sanitized_content[key] = sanitize_for_markdown(str(value), preserve_markdown)
+            sanitized_content[key] = sanitize_for_markdown(
+                str(value), preserve_markdown
+            )
 
     return sanitized_content
 
 
-def _format_nested_feedback(phase_data: dict[str, Any], formatted_sections: list[str], title: str, key: str) -> None:
+def _format_nested_feedback(
+    phase_data: dict[str, Any],
+    formatted_sections: list[str],
+    title: str,
+    key: str,
+) -> None:
     """Format nested feedback structure (criticisms, feedback, etc.)."""
     if phase_data.get(key):
         formatted_sections.append(f"#### {title}")
@@ -76,7 +89,9 @@ def _format_nested_feedback(phase_data: dict[str, Any], formatted_sections: list
             formatted_sections.append("")
 
 
-def _format_evaluations(phase_data: dict[str, Any], formatted_sections: list[str]) -> None:
+def _format_evaluations(
+    phase_data: dict[str, Any], formatted_sections: list[str]
+) -> None:
     """Format cross-evaluations."""
     if phase_data.get("evaluations"):
         formatted_sections.append("#### Cross-Evaluations")
@@ -86,7 +101,9 @@ def _format_evaluations(phase_data: dict[str, Any], formatted_sections: list[str
             formatted_sections.append("")
 
 
-def _format_scores(phase_data: dict[str, Any], formatted_sections: list[str]) -> None:
+def _format_scores(
+    phase_data: dict[str, Any], formatted_sections: list[str]
+) -> None:
     """Format scores (peer review or single judge)."""
     if "scores" not in phase_data or not phase_data["scores"]:
         return
@@ -109,7 +126,12 @@ def _format_scores(phase_data: dict[str, Any], formatted_sections: list[str]) ->
         formatted_sections.append("")
 
 
-def _format_model_responses(phase_data: dict[str, Any], formatted_sections: list[str], title: str, key: str) -> None:
+def _format_model_responses(
+    phase_data: dict[str, Any],
+    formatted_sections: list[str],
+    title: str,
+    key: str,
+) -> None:
     """Format model responses (improved/enhanced/refined answers)."""
     if phase_data.get(key):
         formatted_sections.append(f"#### {title}")
@@ -161,15 +183,37 @@ def format_tournament_history(history: dict[str, dict[str, str]]) -> str:
         # Check if this is elimination round format (has nested structure)
         if _is_elimination_round(phase_data):
             # Elimination round or cross-criticism or positive reinforcement format
-            _format_nested_feedback(phase_data, formatted_sections, "Positive Feedback", "feedback")
-            _format_nested_feedback(phase_data, formatted_sections, "Cross-Criticisms", "criticisms")
+            _format_nested_feedback(
+                phase_data, formatted_sections, "Positive Feedback", "feedback"
+            )
+            _format_nested_feedback(
+                phase_data,
+                formatted_sections,
+                "Cross-Criticisms",
+                "criticisms",
+            )
             _format_evaluations(phase_data, formatted_sections)
             _format_scores(phase_data, formatted_sections)
-            _format_model_responses(phase_data, formatted_sections, "Enhanced Answers After Strength Amplification", "enhanced_answers")
-            _format_model_responses(phase_data, formatted_sections, "Improved Answers After Self-Correction", "improved_answers")
+            _format_model_responses(
+                phase_data,
+                formatted_sections,
+                "Enhanced Answers After Strength Amplification",
+                "enhanced_answers",
+            )
+            _format_model_responses(
+                phase_data,
+                formatted_sections,
+                "Improved Answers After Self-Correction",
+                "improved_answers",
+            )
 
             # Show refined answers if present (from progressive refinement)
-            _format_model_responses(phase_data, formatted_sections, "Refined Answers", "refined_answers")
+            _format_model_responses(
+                phase_data,
+                formatted_sections,
+                "Refined Answers",
+                "refined_answers",
+            )
         else:
             # Simple format: just model responses
             for model_name, response in phase_data.items():
