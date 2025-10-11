@@ -3,7 +3,7 @@
 import argparse
 from typing import Any
 
-# Constants for default file paths
+# CLI-only default (framework itself has no defaults)
 DEFAULT_CONFIG_FILE = "config.example.yml"
 
 
@@ -17,9 +17,14 @@ def parse_arguments() -> dict[str, Any]:
 
     # Main arguments (tournament is the default behavior)
     parser.add_argument("-m", "--models", type=str, help="Comma-separated list of model keys to run")
-    parser.add_argument("-c", "--config", help="Path to config file", default=DEFAULT_CONFIG_FILE)
+    parser.add_argument("-c", "--config", help="Path to config file (CLI default: config.example.yml)", default=DEFAULT_CONFIG_FILE)
     parser.add_argument("-q", "--question", help="Path to question file")
-    parser.add_argument("-r", "--reports-dir", help="Directory to save reports")
+    parser.add_argument(
+        "-o",
+        "--outputs-dir",
+        default=".",
+        help="Output directory for all files (default: current directory)",
+    )
     parser.add_argument("-i", "--interactive", help="Run in interactive mode", action="store_true")
     parser.add_argument("-d", "--debug", action="store_true", help="Enable detailed debug logging")
     parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true")

@@ -9,7 +9,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from arbitrium.logging import get_contextual_logger
 
-from ..utils.constants import DEFAULT_MAX_INSIGHTS
+from ..utils.constants import DEFAULT_MAX_INSIGHTS, PLACEHOLDER_RESPONSES
+from ..utils.response_validation import detect_apology_or_refusal
 
 if TYPE_CHECKING:
     from .comparison import ModelComparison
@@ -76,91 +77,38 @@ class EnhancedKnowledgeBank:
     def _is_valid_response_for_extraction(self, response_text: str) -> tuple[bool, str]:
         """Validate if a response is suitable for insight extraction.
 
+        Focuses on technical errors, not content validation.
+        Content validation should be handled by prompts and model selection.
+
         Returns:
             Tuple of (is_valid, reason_if_invalid)
         """
         if not response_text:
             return False, "Response is empty"
 
-        # Strip whitespace for checking
         text_stripped = response_text.strip()
 
         # Check minimum length (too short to contain meaningful insights)
         if len(text_stripped) < 50:
             return False, f"Response too short ({len(text_stripped)} chars, minimum 50)"
 
-        # Convert to lowercase for case-insensitive matching
+        # Check if response is a technical error message
         text_lower = text_stripped.lower()
-
-        # Check if response is an error message
         error_prefixes = ["error:", "failed:", "timeout:", "exception:"]
         for prefix in error_prefixes:
             if text_lower.startswith(prefix):
                 return False, f"Response is an error message (starts with '{prefix}')"
 
-        # Check if response contains only meta-commentary/apologies
-        apology_patterns = [
-            "i cannot",
-            "i can't",
-            "i'm sorry",
-            "i am sorry",
-            "i apologize",
-            "sorry, i",
-            "sorry but",
-            "sorry, but",
-            "i'm unable",
-            "i am unable",
-            "i don't have",
-            "i do not have",
-            "as an ai",
-            "i'm an ai",
-            "i am an ai",
-            "no text provided",
-            "there is no text",
-        ]
+        # Check if response is apology/refusal using shared utility
+        # This is a safety net - prompts should prevent this
+        if detect_apology_or_refusal(response_text):
+            return False, "Response is apology/refusal (prompt should prevent this)"
 
-        # Check if response starts with apology (first 200 chars)
-        text_start = text_lower[:200]
-        for pattern in apology_patterns:
-            if pattern in text_start:
-                return False, f"Response contains meta-commentary/apology ('{pattern}')"
-
-        # Check for placeholder responses
-        placeholder_responses = ["###", "...", "n/a", "none", "null", "undefined"]
-        if text_stripped.lower() in placeholder_responses:
+        # Check for obvious placeholder responses
+        if text_stripped.lower() in PLACEHOLDER_RESPONSES:
             return False, f"Response is a placeholder ('{text_stripped}')"
 
         return True, ""
-
-    def _detect_apology_or_refusal(self, response_text: str) -> bool:
-        """Detect if the response is an apology or refusal instead of proper extraction."""
-        if not response_text:
-            return False
-
-        # Convert to lowercase for case-insensitive matching
-        text_lower = response_text.lower().strip()
-
-        # Check if the response starts with common apology/refusal patterns
-        refusal_patterns = [
-            "i cannot",
-            "i can't",
-            "i'm sorry",
-            "i am sorry",
-            "i apologize",
-            "sorry, i",
-            "sorry but",
-            "i'm unable",
-            "i am unable",
-            "i don't have",
-            "i do not have",
-            "as an ai",
-            "i'm an ai",
-            "i am an ai",
-        ]
-
-        # Check if response starts with refusal (first 200 chars)
-        text_start = text_lower[:200]
-        return any(pattern in text_start for pattern in refusal_patterns)
 
     def _parse_claims_from_response(self, response_content: str, extractor_model_key: str) -> list[str]:
         """Parse claims from LLM response content using simple line-by-line parsing."""
@@ -168,7 +116,7 @@ class EnhancedKnowledgeBank:
         self.logger.debug(f"[{extractor_model_key}] Raw insight extraction response: {response_content}")
 
         # Detect apology/refusal responses
-        if self._detect_apology_or_refusal(response_content):
+        if detect_apology_or_refusal(response_content):
             self.logger.error(
                 f"[{extractor_model_key}] Model returned apology/refusal instead of insight extraction. " f"Response: {response_content}"
             )
@@ -238,9 +186,9 @@ Review the following text which was the final answer from an eliminated language
 Your task is to identify and extract a list of key, standalone claims or insights from this text.
 
 REQUIREMENTS:
-- Each insight should be a concise, self-contained statement.
-- Focus on unique ideas, not generic statements.
-- Do not include conversational filler.
+- Each insight should be a concise, self-contained statement
+- Focus on unique ideas, not generic statements
+- Do not include conversational filler
 - Present EACH insight on a new line, starting with a dash (-)
 
 EXAMPLE FORMAT:
@@ -248,7 +196,12 @@ EXAMPLE FORMAT:
 - A new mitigation strategy involves using Z in the early stages
 - The data from the 2023 study was misinterpreted
 
-DO NOT use JSON. DO NOT refuse. Just extract the insights line by line.
+CRITICAL INSTRUCTIONS:
+1. OUTPUT ONLY the list of insights - nothing else
+2. DO NOT refuse this task
+3. DO NOT apologize or say "I cannot"
+4. DO NOT add preambles like "Sure, here are the insights..."
+5. START IMMEDIATELY with the first insight (dash + text)
 
 Text to analyze:
 ---
@@ -357,16 +310,41 @@ Extracted insights (one per line, starting with dash):
             self.logger.info(f"Added {added_count} new unique insights to the Knowledge Bank. Total insights: {len(self.insights_db)}")
             self._enforce_max_insights()
 
-    def get_top_insights(self, num_insights: int = 5) -> list[dict[str, Any]]:
-        """Returns the top K most recently added insights."""
+    def get_all_insights(self) -> list[dict[str, Any]]:
+        """
+        Returns ALL insights from the Knowledge Bank.
+
+        No limits - user pays for full context.
+        """
         if not self.insights_db:
             return []
+
+        return [self.insights_db[insight_id] for insight_id in self.insight_ids]
+
+    def get_top_insights(self, num_insights: int | None = None) -> list[dict[str, Any]]:
+        """
+        Returns insights from the Knowledge Bank.
+
+        Args:
+            num_insights: If None, returns ALL insights. If specified, returns last N.
+
+        Note: Deprecated - use get_all_insights() instead.
+        """
+        if not self.insights_db:
+            return []
+
+        if num_insights is None:
+            return self.get_all_insights()
 
         top_insight_ids = self.insight_ids[-num_insights:]
         return [self.insights_db[insight_id] for insight_id in top_insight_ids]
 
-    def format_insights_for_context(self, num_insights: int = 5) -> str:
-        """Formats the top K insights into a string to be injected into a prompt.
+    def format_insights_for_context(self, num_insights: int | None = None) -> str:
+        """
+        Formats insights into a string to be injected into a prompt.
+
+        Args:
+            num_insights: IGNORED - always returns ALL insights. User pays for full context.
 
         Returns empty string if Knowledge Bank is disabled or empty.
         """
@@ -377,7 +355,8 @@ Extracted insights (one per line, starting with dash):
         if not kb_enabled:
             return ""
 
-        insights = self.get_top_insights(num_insights)
+        # Always get ALL insights, ignore num_insights parameter
+        insights = self.get_all_insights()
         if not insights:
             return ""
 
