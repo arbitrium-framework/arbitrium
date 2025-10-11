@@ -38,37 +38,21 @@ RESPONSE_WRAPPER = """
 """.strip()
 
 # Logging templates
-LOG_RESPONSE = """
-
-========== [{response_type}] RESPONSE FROM {model} BEGIN ==========
+LOG_RESPONSE = """========== [{response_type}] RESPONSE FROM {model} BEGIN ==========
 {content}
+=========== [{response_type}] RESPONSE FROM {model} END ===========""".strip()
 
-=========== [{response_type}] RESPONSE FROM {model} END ===========
-""".strip()
-
-LOG_PROMPT = """
-
-========== PROMPT TO {model} BEGIN ==========
+LOG_PROMPT = """========== PROMPT TO {model} BEGIN ==========
 {content}
+=========== PROMPT TO {model} END ===========""".strip()
 
-=========== PROMPT TO {model} END ===========
-""".strip()
-
-LOG_JUDGE_EVALUATION = """
-
-========== JUDGE EVALUATION FROM {judge} BEGIN ==========
+LOG_JUDGE_EVALUATION = """========== JUDGE EVALUATION FROM {judge} BEGIN ==========
 {content}
+=========== JUDGE EVALUATION FROM {judge} END ===========""".strip()
 
-=========== JUDGE EVALUATION FROM {judge} END ===========
-""".strip()
-
-LOG_FEEDBACK = """
-
-========== FEEDBACK FROM {reviewer} FOR {target} BEGIN ==========
+LOG_FEEDBACK = """========== FEEDBACK FROM {reviewer} FOR {target} BEGIN ==========
 {content}
-
-=========== FEEDBACK FROM {reviewer} FOR {target} END ===========
-""".strip()
+=========== FEEDBACK FROM {reviewer} FOR {target} END ===========""".strip()
 
 LOG_EVALUATOR_RESPONSE = """
 Evaluator {evaluator} response:
@@ -140,9 +124,19 @@ IMPROVEMENT_PROMPT_TEMPLATE = """
 =========== ANSWER END ===========
 {context_section}{knowledge_section}
 
-IMPORTANT: YOUR RESPONSE MUST BEGIN *DIRECTLY* WITH THE ACTUAL IMPROVED ANSWER. DO NOT INCLUDE ANY GREETINGS, PREFIXES, OR META-COMMENTARY.
+CRITICAL INSTRUCTIONS FOR YOUR RESPONSE:
 
-Provide your improved answer now:
+1. OUTPUT ONLY THE IMPROVED ANSWER - nothing else
+2. DO NOT add any preambles like:
+   - "Sure, here is..."
+   - "Here's my improved response..."
+   - "Okay, I will..."
+   - "Certainly! Here is..."
+3. DO NOT include greetings like "Hello!", "Hi there!"
+4. DO NOT add meta-commentary or explanations
+5. START IMMEDIATELY with the actual content of your answer
+
+Your response should begin directly with the improved answer:
 """.strip()
 
 EVALUATION_PROMPT_TEMPLATE = """

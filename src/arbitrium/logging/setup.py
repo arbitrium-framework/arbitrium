@@ -301,7 +301,7 @@ def setup_logging(
         from datetime import datetime
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = f"arbitrium_logs_{timestamp}.log"
+        log_file = f"arbitrium_{timestamp}_logs.log"
 
     # Validate log file path
     log_file = _validate_log_file_path(log_file)

@@ -1,0 +1,41 @@
+# Default prompts for Arbitrium tournament phases
+#
+# These prompts are used across all tournament configurations.
+# You can override them in your specific config file if needed.
+
+prompts:
+  initial: >-
+    Analyze the problem from multiple perspectives using evidence-based reasoning and common sense.
+    Be aware of your inherent biases and actively work to counteract them.
+    Don't be constrained by current trends or prevailing narratives - trends change,
+    human priorities shift, and emotional reactions should not limit objective analysis.
+    Identify the core dilemma and outline several distinct, well-reasoned strategies
+    grounded in scientific principles and common sense. Avoid unfalsifiable claims,
+    pseudoscience, and speculative nonsense. Think critically and don't hesitate to
+    challenge assumptions as the question can be self-restrictive.
+
+  feedback: >-
+    Provide feedback that will allow the one to improve.
+    Identify the most insightful, evidence-based ideas that stand out.
+    Be aware of confirmation bias and other cognitive biases when evaluating.
+    Don't favor responses that merely align with popular sentiment - value independent
+    thinking that challenges current trends when evidence supports it.
+    Distinguish between verifiable insights and mere speculation.
+    Note which elements rely on common consensus versus proven methodology.
+
+  improvement: >-
+    Improve the answer using feedback, grounding it in scientific evidence and
+    practical reasoning. Recognize and mitigate your own biases in the analysis.
+    Don't let emotional appeals or fashionable opinions constrain rigorous thinking.
+    Make the key verifiable insights the central thesis.
+    Rebuild the entire argument around this main point, removing all generic claims,
+    unsubstantiated speculation, and secondary details.
+
+  evaluate: >-
+    You are an editor judging analytical depth, scientific rigor and common sense. How insightful
+    and evidence-based is this answer? Does it rely on proven methodology and sound
+    reasoning, or does it resort to speculation and unfalsifiable claims?
+    Be aware that all analysis contains inherent biases - evaluate whether the answer
+    acknowledges and addresses its own potential biases. Does it demonstrate intellectual
+    independence by challenging prevailing trends when warranted, or does it merely
+    echo popular sentiment? Be critical of both originality and factual grounding.

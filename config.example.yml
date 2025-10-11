@@ -1,224 +1,213 @@
 question: >-
-  What is the meaning of life?
 
+  Tasking Brief: Petabyte-Scale Data Replay with Apache Flink (foundation for Flink-as-a-Service)
+
+  Central thesis
+  Guaranteeing correctness and determinism across heterogeneous sinks at petabyte scale is the core problem. Anchor the design on:
+  - Exactly-once to Kafka via Kafka transactions (Flink KafkaSink EOS).
+  - Atomic, idempotent commits to object stores using a table format with snapshot commits (Apache Iceberg/Hudi/Delta) or a rigorously implemented two-phase FileSink with deterministic file layout and manifest-based reconciliation.
+  Everything else (connectors, formats, transformations, throttling, tenancy) must be modular and driven by a declarative JobSpec, enforced by a control plane with guardrails.
+
+  Objectives
+  - MVP: Time-bounded, throttled data replay among Kafka, S3, and GCS for JSON/Protobuf/Parquet with exactly-once/atomic semantics, essential transformations, and production-grade observability and recovery.
+  - Evolution: Self-service Flink-as-a-Service with a declarative DSL-to-Table/SQL compiler, multi-tenant policy enforcement, and cost controls.
+
+  Non-negotiable constraints
+  - Engine and runtime: Apache Flink on Kubernetes using the Flink Kubernetes Operator; per-job application clusters for isolation.
+  - Language: Java 11 (document trade-offs if proposing 17).
+  - Connectors: Kafka, AWS S3, GCS (as both sources and sinks).
+  - Formats: JSON, Protobuf (with schema registry), Parquet.
+  - Data integrity: Exactly-once to Kafka; atomic/idempotent object-store commits; deterministic replays given the same JobSpec.
+  - Secondary target: Maintain reasonable compatibility with AWS EMR without compromising the k8s-first architecture.
+
+  Evidence-based design decisions to produce (ADRs with consequences and validation)
+  1) Object-store sink semantics
+  - Option A (recommended by default): Table format (Iceberg/Hudi/Delta) for S3/GCS writes, using atomic snapshot metadata commits for consistency, schema evolution, and idempotent replays. Choose catalog (Glue/Hive/Nessie) and partitioning. Define compaction and delete policy.
+  - Option B: Flink FileSink with two-phase commit, deterministic file naming/partitioning, explicit run manifest, and post-commit dedupe/compaction. Use only for append-only use cases.
+  - Document failure modes, recovery, and re-run idempotency for the chosen approach.
+  Known facts: Kafka offers transactional EOS; S3/GCS provide strong consistency but no multi-object atomicity; table formats provide atomic snapshot commits.
+
+  2) IO and format architecture (composability to avoid 9×3×3 explosion)
+  - Deserializer -> normalized internal row (e.g., Flink RowData) with schema propagation -> transformers -> Serializer.
+  - Clear SPIs for Source, Sink, Deserializer, Serializer, and Transform, so adding a new connector/format is O(1) and does not modify core.
+  - Provide property-based tests to validate transformations and conversions independent of connectors.
+
+  3) Time-bounded replay semantics
+  - Kafka: resolve per-partition start/end using offsetsForTimes; enforce stop using end offsets or timestamp filters; preserve partition ordering.
+  - Object stores: filter by partition paths and/or record timestamps; leverage table metadata/manifests for pruning and to avoid expensive listings; push down predicates for Parquet.
+
+  4) Rate limiting that preserves correctness
+  - Checkpointed token-bucket limiter (bytes/sec and records/sec) at the sink (and optionally per-key/partition) to produce backpressure rather than sleeps; observe interaction with checkpoint alignment.
+  - Define behavior when downstream latency spikes (dynamic throttling vs fixed caps).
+
+  5) Transformations and enrichment
+  - In-scope primitives: projection, deterministic filtering, schema mapping/evolution (add/drop/rename/widen with defaults).
+  - Enrichment preference: temporal or broadcast joins using dimension snapshots; only use async I/O lookups when necessary, with bounded concurrency, caching, and explicit at-least-once semantics unless the external system guarantees idempotency.
+  - Document state implications (checkpoint sizes, RocksDB tuning).
+
+  6) State backend and checkpointing
+  - Use RocksDB with incremental checkpoints and externalized checkpoint storage; HA JobManager.
+  - Parameters: checkpoint interval/timeout, tolerable alignment time, state size budget per TaskManager.
+  - Validation: recovery tests under task/cluster restarts and intermittent network faults.
+
+  7) Replay determinism and run manifest
+  - Record source boundaries (Kafka offsets by partition, object-store file lists/snapshots), sink commit IDs/snapshots, and transformation config in a run manifest.
+  - Determinism acceptance test: identical JobSpec produces identical sink snapshot or idempotent result upon re-run.
+
+  8) Control plane and JobSpec
+  - Declarative JobSpec with fields:
+    jobName, tenant; source {type, location, format, schemaRef, timeRange, partitions?}; sink {type, location, format, partitioning, table?}; transform {filter, projection, schema mapping}; enrichment {type, source, keys, cache limits, temporal spec}; limits {bytesPerSec, recordsPerSec, maxParallelism}; reliability {checkpoint interval/timeout, restart policy, exactlyOnce flag}; resources {CPU/memory per task}; placement {region/zone}.
+  - Control plane validates guardrails (quotas, regions, egress policy, cost estimate), emits a FlinkDeployment via the Flink Operator, and manages pause/resume via savepoints.
+
+  9) Observability and SRE readiness
+  - Metrics (Prometheus): throughput (records/bytes in/out), Kafka lag, watermark lag, backpressure and throttling ratios, checkpoint size/duration/failure rate, RocksDB metrics, sink commit latency, enrichment cache hit/miss.
+  - Logs: structured with job/run IDs and source partition context; centralized aggregation.
+  - Dashboards and alerts: lag thresholds, checkpoint failures, sink commit failures, cost/throughput anomalies.
+
+  10) Security and tenancy
+  - Credentials via IRSA/Workload Identity where possible; otherwise, K8s Secrets or Vault with least privilege; TLS in transit; encryption at rest for state, checkpoints, and outputs.
+  - Per-tenant namespaces, RBAC, resource quotas, and isolation (per-job clusters).
+  - Audit logs for control-plane actions and sensitive data access.
+
+  11) Cost controls and placement
+  - Pre-submission cost estimate (compute + egress + checkpoint storage) using data size, proposed throughput, resource config; require approval above thresholds.
+  - Quotas: max parallelism, bytes/sec, and checkpoint size; enforce region placement near data to avoid cross-region egress unless explicitly approved.
+
+  MVP scope (prioritized certification, not all 81 combinations)
+  - Day-1 certified flows:
+    1) Kafka (Protobuf via schema registry) → S3 (Parquet via chosen table format).
+    2) S3 (Parquet) → S3 (Parquet) with partition pruning and compaction plan.
+    3) Kafka (JSON) → Kafka (JSON) with EOS.
+  - Features: time-bounded replay, rate limiting, schema evolution (add/drop/rename/defaults), deterministic filtering, run manifest, observability dashboards, pause/resume via savepoints.
+  - Out-of-scope for MVP: complex multi-stream joins, user-defined functions beyond vetted UDFs, cross-region pipelines by default, UI (CLI/API is sufficient), complex enrichment requiring large external QPS.
+
+  Deliverables
+  - ADRs covering: object-store semantics; composable IO/format architecture; rate limiter design; state backend and checkpoint policy; Job execution model (application vs session); credential strategy; compaction strategy; cost guardrails; EMR compatibility plan.
+  - JobSpec schema and validation rules; control-plane API contract (submit/list/describe/pause/resume/cancel) and CRD mapping.
+  - Reference data-plane implementation skeleton demonstrating the three Day-1 flows with integration tests.
+  - Observability assets: Prometheus metrics, Grafana dashboards, alert rules.
+  - Sizing and cost calculator with formulas for parallelism, TaskManager memory/disk, checkpoint intervals, and estimated spend.
+  - Testing plan: connector-format contract tests (testcontainers or ephemeral cloud resources), golden-record tests for format conversions and schema evolution, replay determinism tests, scale and soak tests, and failure-injection scenarios (TaskManager/JobManager restarts, checkpoint failures, transient sink errors).
+
+  Acceptance criteria (MVP)
+  - Correctness
+    - Kafka→Kafka replay demonstrates exactly-once under induced failures (no duplicates/loss).
+    - Kafka/Object store and Object store/Object store pipelines commit atomically; re-running the same JobSpec is idempotent; run manifest logs source and sink commit boundaries.
+    - Schema evolution validated across JSON/Protobuf/Parquet (add/drop/rename/defaults/type-widen).
+  - Performance and scalability
+    - Sustained ≥1 GB/s throughput on a documented reference cluster with linear scaling to higher throughput by increasing parallelism.
+    - Throttling holds throughput within configured caps without persistent backlog growth at the sink.
+    - Checkpoint success rate ≥99% with bounded durations; recovery from TaskManager failure within 5 minutes to last completed checkpoint.
+  - Operability
+    - Submit, pause/resume (savepoints), cancel; observable metrics/logs/dashboards/alerts are live and useful.
+    - Deterministic replays: identical JobSpec yields identical sink snapshot or verified idempotent outcome.
+  - Security and tenancy
+    - TLS, encryption at rest; per-tenant RBAC and quotas; credentials handled via IRSA/Workload Identity where supported; audit trails present.
+  - Extensibility
+    - Adding one new connector or format requires implementing a documented SPI and adding tests; no core changes.
+
+  Risks and mitigations
+  - Object-store exactly-once gap: Prefer table formats for atomic snapshots; if using FileSink, enforce deterministic layout and manifest-based reconciliation; document residual risks.
+  - External enrichment bottlenecks: Prefer temporal/broadcast joins; for async lookups, bound concurrency and cache; document semantics as at-least-once enrichment.
+  - Small-file and listing overhead: Use table metadata for pruning and schedule compaction; cap listing concurrency if using raw paths.
+  - Cross-region egress and placement: Enforce region co-location by default; require approval for egress-heavy runs with clear cost estimates.
+  - Schema registry outages: Cache schemas locally and define fail-fast vs retry policy; test mid-job unavailability.
+  - Operator blast radius: Use per-job application clusters; document session-mode use only for dev.
+
+  Open questions for stakeholder alignment
+  - Which table format and catalog are acceptable for object-store sinks (Iceberg vs Hudi vs Delta) and why.
+  - Must-have Day-1 flows beyond the proposed three; any strict ordering guarantees beyond Kafka’s per-partition ordering.
+  - Schema compatibility policy (backward/forward/full) and governance for Protobuf and Parquet evolution.
+  - Tenancy quotas and approval thresholds for high-cost jobs; required regions and data residency.
+  - Retention and deletion requirements that affect table format choice (e.g., GDPR deletes).
+
+  Evidence notes (verifiable foundations)
+  - Kafka exactly-once: Kafka transactions with idempotent producers; Flink KafkaSink EOS preserves partition ordering and eliminates duplicates across restarts.
+  - S3/GCS: Strong consistency for object operations but no multi-object atomic commits; table formats provide atomic snapshot commits and schema evolution; Flink’s two-phase FileSink can ensure atomic publish of individual files but not multi-file transactions without higher-level manifests.
+  - Flink RocksDB state + incremental checkpoints: lowers checkpoint IO and improves recovery for large state; externalized checkpoints and savepoints enable reliable pause/resume and upgrades.
+
+  ### **Deliverables **
+
+  YOU ARE expected to produce a comprehensive design package that serves as a blueprint for implementation, testing, and operation. This package must include the following artifacts:
+
+  **1. Foundational Architectural Decisions (ADRs)**
+  A set of Architecture Decision Records (ADRs) with detailed analysis, trade-offs, and consequences for each of the following critical areas:
+  * **Object-Store Sink Semantics:** The final choice and justification (Table Format vs. Two-Phase Commit FileSink).
+  * **Composable IO/Format Architecture:** The specific SPI and module design.
+  * **Rate Limiter Design:** The chosen implementation strategy and its interaction with Flink's backpressure and checkpointing.
+  * **State Backend & Checkpoint Policy:** Detailed configuration and tuning guidelines.
+  * **Job Execution Model:** Justification for Application vs. Session clusters for different environments (dev/prod).
+  * **Security & Credential Strategy:** The detailed flow for handling credentials across k8s and cloud providers.
+  * **Data Lifecycle & Compaction Strategy:** Policy for managing small files and performing deletes/updates via the chosen table format.
+  * **Cost Guardrails & Estimation Model:** The specific formulas and control mechanisms.
+  * **AWS EMR Compatibility Plan:** A clear document outlining points of potential divergence and mitigation strategies.
+
+  **2. System Architecture & Design Diagrams**
+  A comprehensive set of diagrams illustrating the system's structure and behavior:
+  * **System Context Diagram (C4 Model):** High-level view showing the Data Replay System, its users (via Control Plane API/CLI), and its interactions with external systems (Kubernetes, Kafka, S3/GCS, Schema Registry, Prometheus, Vault).
+  * **Container Diagram (C4 Model):** A breakdown of the system into its major deployable components: Control Plane, Flink Job (Application Cluster), Flink Operator, State Storage (S3/GCS), and external dependencies.
+  * **Component Diagram:** A detailed view inside a Flink Job, showing the relationship and data flow between the `Source`, `Deserializer`, `Transformer` chain, `Serializer`, and `Sink` components, emphasizing their pluggable nature via the defined SPIs.
+  * **Sequence Diagrams** for critical flows:
+      * **Job Submission & Lifecycle:** `User -> Control Plane -> Flink K8s Operator -> FlinkDeployment -> JobManager/TaskManagers`.
+      * **Data Processing Pipeline:** Illustrating the path of a single record from source to sink, including transformation and enrichment.
+      * **Atomic Sink Commit (Object Store):** Detailing the interaction between the Flink Sink operator and the Table Format Catalog (e.g., Iceberg's commit to Glue/Nessie).
+      * **Checkpoint & Recovery:** Showing the interaction between JobManager, TaskManagers, and externalized checkpoint storage during a checkpoint and subsequent recovery from failure.
+  * **Deployment Diagram:** A mapping of the logical components to the physical Kubernetes infrastructure (Nodes, Pods, Persistent Volumes, Services, Ingress).
+
+  **3. Code & Project Structure Blueprint**
+  * **Repository Structure:** A proposed layout for the source code repository (e.g., a Maven/Gradle multi-module project) separating concerns like:
+      * `replay-core`: Core logic, interfaces (SPIs), and data models.
+      * `connectors/`: A parent module for individual connector implementations (`connector-kafka`, `connector-s3`, etc.).
+      * `formats/`: A parent module for format handlers (`format-json`, `format-protobuf`, etc.).
+      * `control-plane/`: The service that manages JobSpec submission and lifecycle.
+      * `e2e-tests/`: The end-to-end integration testing suite.
+  * **Core Class & Interface Design (SPIs):** Skeleton Java code (`.java` files with interfaces and method signatures) for the primary Service Provider Interfaces, including:
+      * `ReplaySource<T>`
+      * `ReplaySink<T>`
+      * `RecordDeserializer<T>`
+      * `RecordSerializer<T>`
+      * `RecordTransformer`
+
+  **4. API Contracts & Configuration Schemas**
+  * **JobSpec Schema:** A formal definition (e.g., JSON Schema or Protobuf definition) for the declarative `JobSpec`.
+  * **Control Plane API Contract:** An OpenAPI/gRPC specification for the control plane's REST/RPC endpoints (`submit`, `list`, `describe`, `pause`, `resume`, `cancel`).
+
+  **5. Operational & Testing Assets**
+  * **Observability Assets:** Ready-to-use configurations for Prometheus metrics scraping, example Grafana dashboard JSON models, and a baseline set of Alertmanager rules.
+  * **Sizing & Cost Calculator:** An interactive spreadsheet or tool to help users estimate resource requirements and costs based on their `JobSpec`.
+  * **Comprehensive Test Plan:** A document detailing the strategy for unit, component, integration (with Testcontainers), and end-to-end testing, including specific scenarios for failure injection.
+
+  **6. Implementation & Rollout Plan**
+  A phased project plan that maps deliverables to milestones, aligning with the MVP scope and the long-term evolution towards Flink-as-a-Service.
+  * **Phase 1 (Foundation):** Implement the core framework, SPIs, and the three Day-1 certified flows with full correctness and observability.
+  * **Phase 2 (Expansion):** Incrementally add support for more connector-format combinations based on business priority.
+  * **Phase 3 (Self-Service):** Develop the advanced features of the control plane, including the DSL compiler, multi-tenant policy enforcement, and automated cost controls.
+
+
+# Active models for this tournament
+# All available models are defined in src/arbitrium/config/defaults/models.yml
+# Just reference the models you want to use by their key
+# You can override any setting (like temperature) if needed
 models:
-  # Tiny models DONT USE THEM THEY WON'T WORK (< 2B parameters, ~1-2GB RAM)
+  gpt: {}     # Use default settings from defaults/models.yml
+  claude: {}  # Use default settings from defaults/models.yml
+  gemini: {}  # Use default settings from defaults/models.yml
+  grok: {}
 
-  # Small models
+# Example: Override a specific setting for a model
+# gpt:
+#   temperature: 0.8  # Override default temperature
 
-  gemma-2b: # 2B parameters, ~2GB RAM
-    provider: ollama
-    model_name: ollama/gemma:2b
-    display_name: "Gemma 2B"
-    temperature: 0.7
-    max_tokens: 4096  # Override auto-detected 2048 (25% of 8192)
+# Example: Use smaller models (all defined in defaults/models.yml)
+# llama3: {}
+# mistral-1: {}
+# phi3: {}
 
-  phi: # 2.7B parameters, ~3GB RAM
-    provider: ollama
-    model_name: ollama/phi
-    display_name: "Phi-2 2.7B"
-    temperature: 0.7
-    max_tokens: 1024  # Override auto-detected 512 (25% of 2048)
+# All other settings (retry, features, knowledge_bank, prompts, secrets)
+# are automatically loaded from src/arbitrium/config/defaults/
 
-  orca-mini: # 3B parameters, ~3GB RAM
-    provider: ollama
-    model_name: ollama/orca-mini:3b
-    display_name: "Orca Mini 3B"
-    temperature: 0.7
-    max_tokens: 1024  # Override auto-detected 512 (25% of 2048)
+# You can override any default setting by specifying it here:
+# features:
+#   deterministic_mode: false  # Override default
 
-  # Medium-small models
-
-  # phi3: # 3.8B parameters, ~4GB RAM, context 4096
-  #   provider: ollama
-  #   model_name: ollama/phi3
-  #   display_name: "Phi-3 Mini 3.8B"
-  #   temperature: 0.7
-
-  # phi4-mini: # 3.8B parameters, ~4GB RAM
-  #   provider: ollama
-  #   model_name: ollama/phi4-mini
-  #   display_name: "Phi-4 3.8b"
-  #   temperature: 0.7
-
-  # gemma3-4b: # 4B parameters, ~4GB RAM
-  #   provider: ollama
-  #   model_name: ollama/gemma3:4b
-  #   display_name: "Gemma 3 4B"
-  #   temperature: 0.7
-
-  # qwen3-4b: # 4B parameters, ~4GB RAM, context 8192
-  #   provider: ollama
-  #   model_name: ollama/qwen3:4b
-  #   display_name: "Qwen 3 4B"
-  #   temperature: 0.7
-
-  # Standard-small models
-
-  # mistral-1: # 7B parameters, ~8GB RAM
-  #   provider: ollama
-  #   model_name: ollama/mistral:7b-instruct-v0.2-q4_K_M
-  #   display_name: "Mistral 7B"
-  #   temperature: 0.7
-
-  # llama3: # 8B parameters, ~8GB RAM
-  #   provider: ollama
-  #   model_name: ollama/llama3:8b-instruct-q4_K_M
-  #   display_name: "Llama 3 8B"
-  #   temperature: 0.7
-
-  # qwen3-8b: # 8B parameters, ~8GB RAM
-  #   provider: ollama
-  #   model_name: ollama/qwen3:8b
-  #   display_name: "Qwen 3 8B"
-  #   temperature: 0.7
-
-  # gemma3-12b: # 12B parameters, ~12GB RAM
-  #   provider: ollama
-  #   model_name: ollama/gemma3:12b
-  #   display_name: "Gemma 3 12B"
-  #   temperature: 0.7
-
-  # Medium models
-
-  # phi4: # 14B parameters, ~16GB RAM
-  #   provider: ollama
-  #   model_name: ollama/phi4
-  #   display_name: "Phi-4 14b"
-  #   temperature: 0.7
-
-  # gpt-oss-20b: # 20B parameters, ~24GB RAM
-  #   provider: ollama
-  #   model_name: ollama/gpt-oss:20b-cloud
-  #   display_name: "GPT-OSS 20B"
-  #   temperature: 0.7
-
-  # gemma3-27b: # 27B parameters, ~32GB RAM
-  #   provider: ollama
-  #   model_name: ollama/gemma3:27b
-  #   display_name: "Gemma 3 27B"
-  #   temperature: 0.7
-
-  # qwen3-30b: # 30B parameters, ~32GB RAM
-  #   provider: ollama
-  #   model_name: ollama/qwen3:30b
-  #   display_name: "Qwen 3 30B"
-  #   temperature: 0.7
-
-  # Huge/Semi clever models
-
-  # gpt-oss-120b: # 120B parameters, ~128GB RAM
-  #   provider: ollama
-  #   model_name: ollama/gpt-oss:120b-cloud
-  #   display_name: "GPT-OSS 120B"
-  #   temperature: 0.7
-
-  # deepseek-v3: # 671B parameters, >512GB RAM
-  #   provider: ollama
-  #   model_name: ollama/deepseek-v3.1:671b-cloud
-  #   display_name: "DeepSeek V3 671B"
-  #   temperature: 0.7
-  #   context_window: 128000
-  #   max_tokens: 8192
-
-  # grok: # Parameters not public but constantly scored lower than top tier models
-  #   provider: xai
-  #   model_name: xai/grok-4-latest
-  #   display_name: "Grok 4"
-  #   temperature: 0.7
-
-  # Top tier models
-
-  # gpt: # Parameters not public
-  #   provider: openai
-  #   model_name: gpt-5
-  #   display_name: "GPT-5"
-  #   temperature: 0.7
-  #   reasoning_effort: "high"
-
-  # claude: # Parameters not public
-  #   provider: anthropic
-  #   model_name: claude-sonnet-4-5-20250929
-  #   display_name: "Claude 4.5 Sonnet"
-  #   temperature: 1.0
-  #   reasoning_effort: "high"
-
-  # gemini: # Parameters not public
-  #   provider: vertex_ai
-  #   model_name: vertex_ai/gemini-2.5-pro
-  #   display_name: "Gemini 2.5 Pro"
-  #   temperature: 0.7
-  #   reasoning_effort: "high"
-
-retry:
-  max_attempts: 2
-  initial_delay: 5
-  max_delay: 30
-
-features:
-  save_reports_to_disk: true
-  deterministic_mode: true
-  judge_model: null
-  knowledge_bank_model: "leader"
-  llm_compression: true
-  compression_model: "ollama/gemma:2b"
-
-knowledge_bank:
-  enabled: true
-  similarity_threshold: 0.75
-  max_insights_to_inject: 50 # TODO: sort by importance
-
-model_defaults:
-  concurrency_limits:
-    max_concurrent_requests: 60
-
-prompts:
-  initial: >-
-    Analyze the problem from multiple perspectives using evidence-based reasoning.
-    Be aware of your inherent biases and actively work to counteract them.
-    Don't be constrained by current trends or prevailing narratives - trends change,
-    human priorities shift, and emotional reactions should not limit objective analysis.
-    Identify the core dilemma and outline several distinct, well-reasoned strategies
-    grounded in scientific principles and common sense. Avoid unfalsifiable claims,
-    pseudoscience, and speculative nonsense. Think critically and don't hesitate to
-    challenge assumptions as the question can be self-restrictive. Be concise and specific.
-  feedback: >-
-    Provide feedback that will allow the one to improve.
-    Identify the most insightful, evidence-based ideas that stand out.
-    Be aware of confirmation bias and other cognitive biases when evaluating.
-    Don't favor responses that merely align with popular sentiment - value independent
-    thinking that challenges current trends when evidence supports it.
-    Distinguish between verifiable insights and mere speculation.
-    Note which elements rely on common consensus versus proven methodology.
-    Be concise and specific.
-  improvement: >-
-    Improve the answer using feedback, grounding it in scientific evidence and
-    practical reasoning. Recognize and mitigate your own biases in the analysis.
-    Don't let emotional appeals or fashionable opinions constrain rigorous thinking.
-    Make the key verifiable insights the central thesis.
-    Rebuild the entire argument around this main point, removing all generic claims,
-    unsubstantiated speculation, and secondary details. Be concise and specific.
-  evaluate: >-
-    You are an editor judging analytical depth and scientific rigor. How insightful
-    and evidence-based is this answer? Does it rely on proven methodology and sound
-    reasoning, or does it resort to speculation and unfalsifiable claims?
-    Be aware that all analysis contains inherent biases - evaluate whether the answer
-    acknowledges and addresses its own potential biases. Does it demonstrate intellectual
-    independence by challenging prevailing trends when warranted, or does it merely
-    echo popular sentiment? Be critical of both originality and factual grounding.
-    Be concise and specific.
-
-secrets:
-  providers:
-    openai:
-      env_var: OPENAI_API_KEY
-      op_path: "op://Personal/OpenAI/api-key"
-    anthropic:
-      env_var: ANTHROPIC_API_KEY
-      op_path: "op://Personal/Anthropic/api-key"
-    vertex_ai:
-      env_var: VERTEX_AI_API_KEY
-      op_path: "op://Personal/VertexAI/api-key"
-    xai:
-      env_var: XAI_API_KEY
-      op_path: "op://Personal/XAI/api-key"
+outputs_dir: "."

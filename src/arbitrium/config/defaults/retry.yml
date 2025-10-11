@@ -1,0 +1,9 @@
+# Default retry settings for API calls
+#
+# These settings apply to all model API calls during tournaments.
+# You can override them in your specific config file if needed.
+
+retry:
+  max_attempts: 3
+  initial_delay: 10
+  max_delay: 60

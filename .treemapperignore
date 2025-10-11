@@ -1,0 +1,12 @@
+test
+*.md
+tests
+*example*
+LICENSE
+NOTICE
+sonar-project.properties
+.*
+mkdocs.yml
+reports
+docs
+CITATION.cff

@@ -112,6 +112,9 @@ DEFAULT_PRESERVE_END_CHARS = 1000
 # Health check prompt
 HEALTH_CHECK_PROMPT = "Say 'OK'"
 
+# Response validation
+PLACEHOLDER_RESPONSES = ["###", "...", "n/a", "none", "null"]
+
 # Score extraction patterns for evaluation parsing
 # ВАЖНО: Паттерны применяются по порядку. Самые строгие и надежные должны идти первыми.
 SCORE_EXTRACTION_PATTERNS = [

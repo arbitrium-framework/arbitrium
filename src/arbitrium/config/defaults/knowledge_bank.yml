@@ -1,0 +1,9 @@
+# Default Knowledge Bank settings
+#
+# The Knowledge Bank preserves insights from eliminated models.
+# You can override these settings in your specific config file if needed.
+
+knowledge_bank:
+  enabled: true
+  similarity_threshold: 0.75  # Cosine similarity threshold for duplicate detection
+  max_insights: 100  # Maximum insights to keep (LRU eviction)
