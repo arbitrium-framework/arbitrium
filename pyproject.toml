@@ -31,7 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 bench = [
-    "datasets~=2.14.0",
+    "datasets~=4.2.0",
     "scipy~=1.12",      # Optional: for advanced stats (we use exact binomial without it)
     "pandas~=2.2",      # Optional: for convenient result analysis
 ]
