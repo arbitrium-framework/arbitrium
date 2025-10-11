@@ -57,7 +57,13 @@ class AuthenticationError(APIError):
 class ModelError(ArbitriumError):
     """Base class for model-related errors."""
 
-    def __init__(self, message: str, model_key: str | None = None, *args: object, **kwargs: object) -> None:
+    def __init__(
+        self,
+        message: str,
+        model_key: str | None = None,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
         self.model_key = model_key
         enhanced_message = message
 
@@ -74,7 +80,13 @@ class ModelResponseError(ModelError):
 class FileSystemError(ArbitriumError):
     """Base class for filesystem-related errors."""
 
-    def __init__(self, message: str, file_path: str | None = None, *args: object, **kwargs: object) -> None:
+    def __init__(
+        self,
+        message: str,
+        file_path: str | None = None,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
         self.file_path = file_path
         enhanced_message = message
 

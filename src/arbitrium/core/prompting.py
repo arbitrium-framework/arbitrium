@@ -27,17 +27,26 @@ class PromptBuilder:
         """Formats a prompt using a unified prompt type (initial, feedback, improvement, evaluate)."""
         prompt_template = self.prompts.get(prompt_type)
         if not prompt_template:
-            raise ValueError(f"Prompt type '{prompt_type}' not found in config. Available: {list(self.prompts.keys())}")
+            raise ValueError(
+                f"Prompt type '{prompt_type}' not found in config. Available: {list(self.prompts.keys())}"
+            )
         return prompt_template.format(**context)
 
-    def _build_feedback_context(self, improvement_context: dict[str, dict[str, str]] | None, display_name: str) -> str:
+    def _build_feedback_context(
+        self,
+        improvement_context: dict[str, dict[str, str]] | None,
+        display_name: str,
+    ) -> str:
         """Build feedback context text for improvement prompt."""
         if not improvement_context:
             return ""
         feedbacks = improvement_context.get(display_name, {})
         if not feedbacks:
             return ""
-        return "\n\n".join(FEEDBACK_WRAPPER.format(reviewer=reviewer, text=text) for reviewer, text in feedbacks.items())
+        return "\n\n".join(
+            FEEDBACK_WRAPPER.format(reviewer=reviewer, text=text)
+            for reviewer, text in feedbacks.items()
+        )
 
     def _build_other_responses_context(
         self,
@@ -50,7 +59,9 @@ class PromptBuilder:
         """Build other responses context text for improvement prompt."""
         if not other_responses:
             return ""
-        filtered = {k: v for k, v in other_responses.items() if k != display_name}
+        filtered = {
+            k: v for k, v in other_responses.items() if k != display_name
+        }
         if not filtered:
             return ""
 
@@ -60,7 +71,9 @@ class PromptBuilder:
 
         return "\n\n".join(responses)
 
-    def _build_full_improvement_context(self, context_text: str, other_responses_text: str) -> str:
+    def _build_full_improvement_context(
+        self, context_text: str, other_responses_text: str
+    ) -> str:
         """Combine feedback and other responses into full context."""
         full_context = ""
         if context_text:
@@ -68,13 +81,17 @@ class PromptBuilder:
         if other_responses_text:
             if full_context:
                 full_context += "\n\n"
-            full_context += OTHER_RESPONSES_HEADER.format(responses_text=other_responses_text)
+            full_context += OTHER_RESPONSES_HEADER.format(
+                responses_text=other_responses_text
+            )
         return full_context
 
     def build_initial_prompt(self, initial_question: str) -> str:
         """Build the initial prompt for the first round."""
         base_prompt = self._format_prompt("initial", context={})
-        return INITIAL_PROMPT_TEMPLATE.format(base_prompt=base_prompt, question=initial_question)
+        return INITIAL_PROMPT_TEMPLATE.format(
+            base_prompt=base_prompt, question=initial_question
+        )
 
     def build_feedback_prompt(
         self,
@@ -103,14 +120,24 @@ class PromptBuilder:
         display_name: str,
     ) -> str:
         """Build the prompt for the improvement phase."""
-        context_text = self._build_feedback_context(improvement_context, display_name)
-        other_responses_text = self._build_other_responses_context(other_responses, display_name, model, own_answer, initial_question)
-        full_context = self._build_full_improvement_context(context_text, other_responses_text)
+        context_text = self._build_feedback_context(
+            improvement_context, display_name
+        )
+        other_responses_text = self._build_other_responses_context(
+            other_responses, display_name, model, own_answer, initial_question
+        )
+        full_context = self._build_full_improvement_context(
+            context_text, other_responses_text
+        )
 
         base_prompt = self._format_prompt("improvement", context={})
 
         context_section = f"\n\n{full_context}" if full_context else ""
-        knowledge_section = f"\n\n{KNOWLEDGE_BANK_HEADER.format(knowledge_text=kb_context)}" if kb_context else ""
+        knowledge_section = (
+            f"\n\n{KNOWLEDGE_BANK_HEADER.format(knowledge_text=kb_context)}"
+            if kb_context
+            else ""
+        )
 
         return IMPROVEMENT_PROMPT_TEMPLATE.format(
             improvement_instruction=improvement_instruction,
@@ -132,7 +159,11 @@ class PromptBuilder:
         base_prompt = self._format_prompt("evaluate", context={})
 
         # Generate a list of models that need to be scored (for clarity)
-        models_list = "\n".join([f"- {name}" for name in sorted(model_names)]) if model_names else "- LLM1\n- LLM2\n- LLM3"
+        models_list = (
+            "\n".join([f"- {name}" for name in sorted(model_names)])
+            if model_names
+            else "- LLM1\n- LLM2\n- LLM3"
+        )
 
         return EVALUATION_PROMPT_TEMPLATE.format(
             base_prompt=base_prompt,

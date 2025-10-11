@@ -21,7 +21,6 @@ repos:
       - id: debug-statements
       - id: name-tests-test
         args: ["--pytest-test-first"]
-        exclude: ^tests/(conftest\.py|shared_data\.py)$
 
   # ============================================================================
   # CODE FORMATTING (minimal - consistency only, not quality)
@@ -49,7 +48,6 @@ repos:
         additional_dependencies:
           ["types-PyYAML", "types-aiofiles", "types-colorama", "types-requests"]
         files: ^src/
-        exclude: ^(tests/|docs/|scripts/|benchmarks/)
 
   # ============================================================================
   # SECURITY & VULNERABILITY DETECTION
@@ -74,7 +72,6 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
-        exclude: ^(docs/|site/|tests/)
 
   # ============================================================================
   # SEMANTIC SECURITY ANALYSIS (replaces basic Bandit)
@@ -94,7 +91,6 @@ repos:
             "--metrics=off",
           ]
         files: ^src/
-        exclude: ^(tests/|docs/|scripts/|benchmarks/)
 
   # ============================================================================
   # DEAD CODE DETECTION (reduces attack surface & maintenance burden)
@@ -107,8 +103,29 @@ repos:
         name: vulture (dead code)
         args: ["--min-confidence=80", "src/"]
         files: ^src/
-        exclude: ^(tests/|__init__.py)
         pass_filenames: false
+
+  # ============================================================================
+  # CODE DUPLICATION DETECTION (reduces maintenance burden & bug propagation)
+  # Evidence: Studies show duplicated code increases bug density by 2-3x
+  # Detects copy-pasted code blocks that should be refactored into functions
+  # ============================================================================
+  - repo: https://github.com/PyCQA/pylint
+    rev: v3.3.4
+    hooks:
+      - id: pylint
+        name: pylint (duplicate code detection)
+        args:
+          [
+            "--disable=all",
+            "--enable=duplicate-code",
+            "--min-similarity-lines=6",
+            "--ignore-comments=yes",
+            "--ignore-docstrings=yes",
+            "--ignore-imports=yes",
+          ]
+        files: ^src/
+        additional_dependencies: ["types-PyYAML", "types-aiofiles", "types-colorama", "types-requests"]
 
   # ============================================================================
   # LINTING (focused on correctness, not style)
@@ -119,8 +136,7 @@ repos:
     hooks:
       - id: ruff
         name: ruff (correctness-focused checks)
-        args: ["--fix"]
-        exclude: ^(docs/|site/|build/|dist/)
+        args: ["--fix", "--unsafe-fixes"]
 
   # ============================================================================
   # SPELL CHECKING (reduces documentation defects)
@@ -131,7 +147,7 @@ repos:
       - id: codespell
         args:
           ["--write-changes", "--ignore-words-list=crate,nd,ser,llm,async,cli,theses"]
-        exclude: ^(\.git/|\.venv/|venv/|build/|dist/)
+        exclude: ^(\.git/|\.venv/|venv/)
 
   # ============================================================================
   # YAML/JSON LINTING
@@ -144,7 +160,7 @@ repos:
           - "-d"
           - >-
             {extends: default, rules:
-            {line-length: {max: 150}, document-start: disable,
+            {line-length: {max: 120}, document-start: disable,
             indentation: disable, comments: disable}}
 
   # ============================================================================

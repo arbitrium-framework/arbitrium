@@ -1,0 +1,8 @@
+*.md
+*.yaml
+*.yml
+.*
+CITATION.cff
+LICENSE
+NOTICE
+sonar-project.properties

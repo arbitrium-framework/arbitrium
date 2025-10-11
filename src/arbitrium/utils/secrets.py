@@ -28,7 +28,9 @@ def get_secret_config(config: dict[str, object]) -> dict[str, tuple[str, str]]:
         ConfigurationError: If config is not set or invalid
     """
     if config is None:
-        raise ConfigurationError("Secret configuration not provided. Config must be passed to get_secret_config.")
+        raise ConfigurationError(
+            "Secret configuration not provided. Config must be passed to get_secret_config."
+        )
 
     if not isinstance(config, dict):
         raise ConfigurationError("Invalid config type. Expected dict.")
@@ -37,24 +39,37 @@ def get_secret_config(config: dict[str, object]) -> dict[str, tuple[str, str]]:
     if not isinstance(secrets_config, dict):
         raise ConfigurationError("Invalid secrets configuration type.")
     if not secrets_config:
-        raise ConfigurationError("No 'secrets' section found in configuration file. Please add secrets configuration.")
+        raise ConfigurationError(
+            "No 'secrets' section found in configuration file. Please add secrets configuration."
+        )
 
     providers = secrets_config.get("providers", {})
     if not providers:
-        raise ConfigurationError("No providers found in secrets configuration. Please add provider configurations.")
+        raise ConfigurationError(
+            "No providers found in secrets configuration. Please add provider configurations."
+        )
 
     secret_config = {}
     for provider, config_data in providers.items():
         if not isinstance(config_data, dict):
-            raise ConfigurationError(f"Invalid secret configuration for provider '{provider}': must be a dictionary")
+            raise ConfigurationError(
+                f"Invalid secret configuration for provider '{provider}': must be a dictionary"
+            )
 
         if "env_var" not in config_data:
-            raise ConfigurationError(f"Missing 'env_var' in secret configuration for provider '{provider}'")
+            raise ConfigurationError(
+                f"Missing 'env_var' in secret configuration for provider '{provider}'"
+            )
 
         if "op_path" not in config_data:
-            raise ConfigurationError(f"Missing 'op_path' in secret configuration for provider '{provider}'")
+            raise ConfigurationError(
+                f"Missing 'op_path' in secret configuration for provider '{provider}'"
+            )
 
-        secret_config[provider] = (config_data["env_var"], config_data["op_path"])
+        secret_config[provider] = (
+            config_data["env_var"],
+            config_data["op_path"],
+        )
 
     return secret_config
 
@@ -74,14 +89,22 @@ def _ensure_op_cli_is_available() -> None:
             timeout=DEFAULT_SUBPROCESS_TIMEOUT,
         )
     except FileNotFoundError as err:
-        raise ConfigurationError("1Password CLI ('op') is not installed. Please install it to continue.") from err
+        raise ConfigurationError(
+            "1Password CLI ('op') is not installed. Please install it to continue."
+        ) from err
     except subprocess.CalledProcessError as err:
-        raise ConfigurationError("You are not signed in to the 1Password CLI. Please run 'op signin' to continue.") from err
+        raise ConfigurationError(
+            "You are not signed in to the 1Password CLI. Please run 'op signin' to continue."
+        ) from err
     except subprocess.TimeoutExpired as err:
-        raise ConfigurationError("The 1Password CLI timed out. It may be busy or unresponsive.") from err
+        raise ConfigurationError(
+            "The 1Password CLI timed out. It may be busy or unresponsive."
+        ) from err
 
 
-def _get_missing_providers(secret_config: dict[str, tuple[str, str]], required_providers: list[str]) -> list[str]:
+def _get_missing_providers(
+    secret_config: dict[str, tuple[str, str]], required_providers: list[str]
+) -> list[str]:
     """
     Get list of providers with missing secrets.
     """
@@ -95,9 +118,15 @@ def _get_missing_providers(secret_config: dict[str, tuple[str, str]], required_p
     return providers_to_fetch
 
 
-def _handle_missing_op_cli(secret_config: dict[str, tuple[str, str]], providers_to_fetch: list[str], error: ConfigurationError) -> None:
+def _handle_missing_op_cli(
+    secret_config: dict[str, tuple[str, str]],
+    providers_to_fetch: list[str],
+    error: ConfigurationError,
+) -> None:
     """Handle case where 1Password CLI is not available."""
-    logger.error(f"1Password CLI not available, and secrets are missing. Error: {error}")
+    logger.error(
+        f"1Password CLI not available, and secrets are missing. Error: {error}"
+    )
     missing_vars = [secret_config[p][0] for p in providers_to_fetch]
     raise ConfigurationError(
         f"Secrets not found in environment variables ({', '.join(missing_vars)}) and 1Password CLI is not available. "
@@ -105,7 +134,9 @@ def _handle_missing_op_cli(secret_config: dict[str, tuple[str, str]], providers_
     ) from error
 
 
-def _fetch_secret_from_1password(provider: str, env_var: str, op_path: str) -> None:
+def _fetch_secret_from_1password(
+    provider: str, env_var: str, op_path: str
+) -> None:
     """Fetch a single secret from 1Password and set it in environment."""
     try:
         result = subprocess.run(
@@ -117,7 +148,9 @@ def _fetch_secret_from_1password(provider: str, env_var: str, op_path: str) -> N
         )
         secret_value = result.stdout.strip()
         if not secret_value:
-            raise ConfigurationError(f"Secret value for '{op_path}' is empty in 1Password.")
+            raise ConfigurationError(
+                f"Secret value for '{op_path}' is empty in 1Password."
+            )
 
         os.environ[env_var] = secret_value
         logger.info(f"Successfully loaded and set '{env_var}' from 1Password.")
@@ -129,10 +162,14 @@ def _fetch_secret_from_1password(provider: str, env_var: str, op_path: str) -> N
         )
         raise ConfigurationError(error_message) from e
     except subprocess.TimeoutExpired as err:
-        raise ConfigurationError(f"Timeout while fetching secret '{op_path}' from 1Password.") from err
+        raise ConfigurationError(
+            f"Timeout while fetching secret '{op_path}' from 1Password."
+        ) from err
 
 
-def load_secrets(config: dict[str, object], required_providers: list[str]) -> None:
+def load_secrets(
+    config: dict[str, object], required_providers: list[str]
+) -> None:
     """
     Loads API keys from environment variables. Optionally fetches them from
     1Password if they are not already set in the environment.
@@ -145,13 +182,17 @@ def load_secrets(config: dict[str, object], required_providers: list[str]) -> No
         ConfigurationError: If any required secret cannot be fetched.
     """
     secret_config = get_secret_config(config)
-    providers_to_fetch = _get_missing_providers(secret_config, required_providers)
+    providers_to_fetch = _get_missing_providers(
+        secret_config, required_providers
+    )
 
     if not providers_to_fetch:
         logger.info("All required secrets are present in the environment.")
         return
 
-    logger.info(f"Missing secrets for: {', '.join(providers_to_fetch)}. Attempting to fetch from 1Password.")
+    logger.info(
+        f"Missing secrets for: {', '.join(providers_to_fetch)}. Attempting to fetch from 1Password."
+    )
 
     try:
         _ensure_op_cli_is_available()

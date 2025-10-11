@@ -1,6 +1,9 @@
 # --- IDEs and Editors ---
 # User-specific configurations for common editors and IDEs.
 .idea/
+config.strategy_benchmark.yml
+benchmarks/config.strategy_benchmark.yml
+.treemapperignore
 .vscode/
 .project
 .pydevproject
@@ -115,10 +118,14 @@ credentials.json
 # --- Project-Specific ---
 # Generated files specific to a project's workflow.
 directory_tree.yaml
-reports/
 my_reports
 benchmark_results/
 *.benchmark.json
+
+# Keep lightweight markdown docs in reports/, exclude heavy data files
+reports/*.csv
+reports/*.json
+reports/*.parquet
 
 # --- Arbitrium Framework Specific ---
 # Runtime logs and outputs
@@ -126,6 +133,12 @@ arbitrium_logs*.log
 arbitrium_champion_*.md
 arbitrium_provenance*.md
 arbitrium_provenance*.json
+arbitrium_*_provenance.json
+arbitrium_*_champion_solution.md
+arbitrium_*_complete_history.json
+
+# Demo notebook outputs
+arbitrium_demo_outputs/
 
 # Coverage reports
 coverage.xml

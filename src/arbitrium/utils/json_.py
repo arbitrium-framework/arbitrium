@@ -9,7 +9,9 @@ import json
 import re
 
 
-def extract_json_from_text(text: str) -> dict[str, object] | list[object] | None:
+def extract_json_from_text(
+    text: str,
+) -> dict[str, object] | list[object] | None:
     """
     Extract JSON from text, handling both code blocks and raw JSON.
 
@@ -50,7 +52,9 @@ def extract_json_from_text(text: str) -> dict[str, object] | list[object] | None
                 list_text = json_text.replace("{", "[", 1)
                 # Replace the last } with ]
                 list_text = "]".join(list_text.rsplit("}", 1))
-                result_list: dict[str, object] | list[object] = json.loads(list_text)
+                result_list: dict[str, object] | list[object] = json.loads(
+                    list_text
+                )
                 return result_list
             except json.JSONDecodeError:
                 pass
