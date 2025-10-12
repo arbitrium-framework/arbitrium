@@ -2,36 +2,24 @@
 """
 Network-free smoke test for tournament system.
 
-Uses FakeModel to verify tournament logic without any external dependencies.
+Uses MockModel from integration conftest to verify tournament logic
+without external dependencies.
 """
 
+import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from arbitrium.core.comparison import ModelComparison
 from arbitrium.core.tournament import EventHandler, HostEnvironment
-from arbitrium.models.base import BaseModel, ModelResponse
 
+# Add tests directory to path to import from conftest
+tests_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(tests_dir))
 
-class FakeModel(BaseModel):
-    """Deterministic fake model for testing."""
-
-    def __init__(self, model_key: str, response_text: str):
-        super().__init__(
-            model_key=model_key,
-            model_name=f"fake/{model_key}",
-            display_name=f"Fake {model_key}",
-            provider="fake",
-            max_tokens=100,
-            temperature=0.0,
-            context_window=1000,
-        )
-        self.response_text = response_text
-
-    async def generate(self, prompt: str) -> ModelResponse:
-        """Return deterministic response."""
-        return ModelResponse.create_success(content=self.response_text)
+from tests.integration.conftest import MockModel  # noqa: E402
 
 
 class FakeEventHandler(EventHandler):
@@ -91,14 +79,26 @@ class FakeHost(HostEnvironment):
         return None
 
 
-@pytest.mark.asyncio  # type: ignore[misc]
+@pytest.mark.asyncio
 async def test_smoke_tournament() -> None:
     """Smoke test: verify tournament completes and returns champion."""
-    # Create fake models with deterministic responses
+    # Create mock models with deterministic responses
     models = {
-        "model_a": FakeModel("model_a", "Response A: The answer is 42."),
-        "model_b": FakeModel(
-            "model_b", "Response B: The answer is clearly 42."
+        "model_a": MockModel(
+            model_name="model_a",
+            display_name="Model A",
+            response_text="Response A: The answer is 42.",
+            temperature=0.0,
+            max_tokens=100,
+            context_window=1000,
+        ),
+        "model_b": MockModel(
+            model_name="model_b",
+            display_name="Model B",
+            response_text="Response B: The answer is clearly 42.",
+            temperature=0.0,
+            max_tokens=100,
+            context_window=1000,
         ),
     }
 
@@ -137,11 +137,18 @@ async def test_smoke_tournament() -> None:
     assert len(result) > 0, "Result should not be empty"
 
 
-@pytest.mark.asyncio  # type: ignore[misc]
+@pytest.mark.asyncio
 async def test_single_model_tournament() -> None:
     """Test tournament with only one model."""
     models = {
-        "solo": FakeModel("solo", "I am the only model."),
+        "solo": MockModel(
+            model_name="solo",
+            display_name="Solo Model",
+            response_text="I am the only model.",
+            temperature=0.0,
+            max_tokens=100,
+            context_window=1000,
+        ),
     }
 
     config = {

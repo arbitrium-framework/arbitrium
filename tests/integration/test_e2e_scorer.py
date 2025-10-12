@@ -1,4 +1,8 @@
-"""End-to-end tests for score extraction and normalization."""
+"""End-to-end tests for score extraction and normalization.
+
+NOTE: Low-level unit tests for ScoreExtractor internal methods are in
+tests/unit/test_scorer.py. This file focuses on end-to-end integration scenarios.
+"""
 
 from arbitrium.core.scorer import ScoreExtractor
 
@@ -37,36 +41,6 @@ class TestScoreExtraction:
         assert len(scores) == 2
         assert scores["Model A"] == 8.5
         assert scores["Model B"] == 7.2
-
-    def test_extract_scores_with_alternative_names(self) -> None:
-        """Test extracting scores using LLM1, LLM2 naming."""
-        extractor = ScoreExtractor()
-        evaluation_text = """
-        LLM1: 8/10
-        LLM2: 7/10
-        """
-        # sorted(["Model B", "Model A"]) = ["Model A", "Model B"]
-        # So LLM1 -> Model A, LLM2 -> Model B
-        scores = extractor.extract_scores(
-            evaluation_text, ["Model B", "Model A"]
-        )
-
-        assert len(scores) == 2
-        assert "Model A" in scores
-        assert "Model B" in scores
-
-    def test_extract_scores_with_response_format(self) -> None:
-        """Test extracting scores using 'Response 1' naming."""
-        extractor = ScoreExtractor()
-        evaluation_text = """
-        Response 1: 9/10
-        Response 2: 6/10
-        """
-        scores = extractor.extract_scores(
-            evaluation_text, ["Model A", "Model B"]
-        )
-
-        assert len(scores) == 2
 
     def test_extract_fractional_scores(self) -> None:
         """Test extracting fractional scores like 8.5/10."""
@@ -177,158 +151,6 @@ class TestScoreExtractionFromEvaluation:
         )
 
         assert len(scores) == 3
-
-
-class TestScoreNormalization:
-    """Test score normalization logic."""
-
-    def test_normalize_valid_score(self) -> None:
-        """Test that valid scores pass through unchanged."""
-        extractor = ScoreExtractor()
-
-        assert extractor.normalize_score(5.0, "Test") == 5.0
-        assert extractor.normalize_score(8.5, "Test") == 8.5
-        assert extractor.normalize_score(1.0, "Test") == 1.0
-        assert extractor.normalize_score(10.0, "Test") == 10.0
-
-    def test_normalize_percentage_to_scale(self) -> None:
-        """Test normalizing percentage (0-1) to 1-10 scale."""
-        extractor = ScoreExtractor()
-
-        # 0.8 should normalize to 8.0
-        normalized = extractor.normalize_score(0.8, "Test")
-        assert normalized == 8.0
-
-        # 0.5 should normalize to 5.0
-        normalized = extractor.normalize_score(0.5, "Test")
-        assert normalized == 5.0
-
-    def test_normalize_oversized_score(self) -> None:
-        """Test normalizing scores > 10."""
-        extractor = ScoreExtractor()
-
-        # Scores > 10.5 are rejected
-        normalized = extractor.normalize_score(80.0, "Test")
-        assert normalized is None
-
-        # Scores > 10.5 are rejected
-        normalized = extractor.normalize_score(100.0, "Test")
-        assert normalized is None
-
-        # Scores between 10 and 10.5 are normalized
-        normalized = extractor.normalize_score(10.2, "Test")
-        assert normalized == 1.02
-
-    def test_reject_invalid_scores(self) -> None:
-        """Test rejecting completely invalid scores."""
-        extractor = ScoreExtractor()
-
-        # Negative scores
-        assert extractor.normalize_score(-5.0, "Test") is None
-
-        # Way too high
-        assert extractor.normalize_score(1000.0, "Test") is None
-
-        # Edge case: just outside valid range
-        assert extractor.normalize_score(0.4, "Test") is None
-        assert extractor.normalize_score(11.0, "Test") is None
-
-    def test_edge_case_boundaries(self) -> None:
-        """Test normalization at boundary values."""
-        extractor = ScoreExtractor()
-
-        # Just inside valid range
-        assert (
-            extractor.normalize_score(0.5, "Test") == 5.0
-        )  # Normalized (0.5 * 10)
-        assert (
-            extractor.normalize_score(10.5, "Test") == 1.05
-        )  # Normalized (10.5 / 10)
-
-        # Exact boundaries
-        assert extractor.normalize_score(1.0, "Test") == 1.0
-        assert extractor.normalize_score(10.0, "Test") == 10.0
-
-
-class TestNumericScoreExtraction:
-    """Test numeric score extraction from various formats."""
-
-    def test_extract_from_integer(self) -> None:
-        """Test extracting score from integer."""
-        extractor = ScoreExtractor()
-        score = extractor._extract_numeric_score(8)
-        assert score == 8.0
-
-    def test_extract_from_float(self) -> None:
-        """Test extracting score from float."""
-        extractor = ScoreExtractor()
-        score = extractor._extract_numeric_score(8.5)
-        assert score == 8.5
-
-    def test_extract_from_string(self) -> None:
-        """Test extracting score from string."""
-        extractor = ScoreExtractor()
-
-        score = extractor._extract_numeric_score("8/10")
-        assert score == 8.0
-
-        score = extractor._extract_numeric_score("7.5")
-        assert score == 7.5
-
-    def test_extract_from_list(self) -> None:
-        """Test extracting score from list (takes first element)."""
-        extractor = ScoreExtractor()
-
-        score = extractor._extract_numeric_score([8.5, 9.0])
-        assert score == 8.5
-
-        score = extractor._extract_numeric_score([])
-        assert score is None
-
-    def test_extract_from_invalid_format(self) -> None:
-        """Test extraction from invalid format returns None."""
-        extractor = ScoreExtractor()
-
-        score = extractor._extract_numeric_score("invalid")
-        assert score is None
-
-        score = extractor._extract_numeric_score(None)
-        assert score is None
-
-
-class TestModelNameMatching:
-    """Test fuzzy model name matching."""
-
-    def test_exact_match(self) -> None:
-        """Test exact model name match."""
-        extractor = ScoreExtractor()
-        result = extractor._match_model_name("Model A", ["Model A", "Model B"])
-        assert result == "Model A"
-
-    def test_fuzzy_match_partial(self) -> None:
-        """Test fuzzy matching with partial names."""
-        extractor = ScoreExtractor()
-
-        # "gpt-4" should match "gpt-4-turbo"
-        result = extractor._match_model_name(
-            "gpt-4", ["gpt-4-turbo", "claude"]
-        )
-        assert result == "gpt-4-turbo"
-
-    def test_fuzzy_match_contains(self) -> None:
-        """Test fuzzy matching when key contains model name."""
-        extractor = ScoreExtractor()
-
-        result = extractor._match_model_name(
-            "Model A Response", ["Model A", "Model B"]
-        )
-        assert result == "Model A"
-
-    def test_no_match(self) -> None:
-        """Test when no match is found."""
-        extractor = ScoreExtractor()
-        result = extractor._match_model_name("Model X", ["Model A", "Model B"])
-        assert result is None
 
 
 class TestComplexScoreFormats:

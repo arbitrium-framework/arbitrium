@@ -13,11 +13,11 @@ class TestFullTournamentWorkflow:
     async def test_basic_tournament_completes_successfully(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that a basic 3-model tournament completes successfully."""
         result, metrics = await arbitrium_instance.run_tournament(
-            simple_question
+            sample_question
         )
 
         # Verify tournament completed
@@ -57,11 +57,11 @@ class TestFullTournamentWorkflow:
     async def test_tournament_phases_execute_in_order(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that tournament phases execute in correct order."""
         # Run tournament
-        await arbitrium_instance.run_tournament(simple_question)
+        await arbitrium_instance.run_tournament(sample_question)
 
         # Access the comparison object that was used
         comparison = arbitrium_instance._last_comparison
@@ -81,7 +81,7 @@ class TestFullTournamentWorkflow:
     async def test_minimal_tournament_two_models(
         self,
         minimal_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test tournament with minimal setup (2 models, no extra phases)."""
         # Create arbitrium with minimal config
@@ -126,11 +126,11 @@ class TestTournamentPhases:
     async def test_initial_phase_generates_responses(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that initial phase generates responses from all models."""
         # Run tournament first
-        await arbitrium_instance.run_tournament(simple_question)
+        await arbitrium_instance.run_tournament(sample_question)
 
         # Access the comparison object that was used
         comparison = arbitrium_instance._last_comparison
@@ -149,11 +149,11 @@ class TestTournamentPhases:
     async def test_improvement_phase_refines_answers(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that improvement phase refines initial answers."""
         # Run tournament first
-        await arbitrium_instance.run_tournament(simple_question)
+        await arbitrium_instance.run_tournament(sample_question)
 
         # Access the comparison object that was used
         comparison = arbitrium_instance._last_comparison
@@ -172,11 +172,11 @@ class TestTournamentPhases:
     async def test_evaluation_phase_produces_scores(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that evaluation phase produces valid scores."""
         # Run tournament first
-        await arbitrium_instance.run_tournament(simple_question)
+        await arbitrium_instance.run_tournament(sample_question)
 
         # Access the comparison object that was used
         comparison = arbitrium_instance._last_comparison
@@ -195,13 +195,13 @@ class TestTournamentElimination:
     async def test_elimination_removes_model_from_active(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that elimination removes model from active participants."""
         initial_count = len(arbitrium_instance._healthy_models)
 
         # Run tournament
-        await arbitrium_instance.run_tournament(simple_question)
+        await arbitrium_instance.run_tournament(sample_question)
 
         # Access the comparison object that was used
         comparison = arbitrium_instance._last_comparison
@@ -216,10 +216,10 @@ class TestTournamentElimination:
     async def test_elimination_tracking_includes_reason(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that eliminations are tracked with reasons."""
-        await arbitrium_instance.run_tournament(simple_question)
+        await arbitrium_instance.run_tournament(sample_question)
 
         # Access the comparison object that was used
         comparison = arbitrium_instance._last_comparison
@@ -239,11 +239,11 @@ class TestTournamentElimination:
     async def test_lowest_score_model_gets_eliminated(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that model with lowest score is eliminated."""
         # Run tournament first
-        await arbitrium_instance.run_tournament(simple_question)
+        await arbitrium_instance.run_tournament(sample_question)
 
         # Access the comparison object that was used
         comparison = arbitrium_instance._last_comparison
@@ -263,11 +263,11 @@ class TestTournamentMetrics:
     async def test_metrics_include_all_required_fields(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that tournament metrics include all required fields."""
         _result, metrics = await arbitrium_instance.run_tournament(
-            simple_question
+            sample_question
         )
 
         # Required fields
@@ -285,10 +285,10 @@ class TestTournamentMetrics:
     async def test_cost_tracking_accumulates(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that costs accumulate throughout tournament."""
-        await arbitrium_instance.run_tournament(simple_question)
+        await arbitrium_instance.run_tournament(sample_question)
 
         # Access the comparison object that was used
         comparison = arbitrium_instance._last_comparison
@@ -308,7 +308,7 @@ class TestTournamentOutputs:
     async def test_tournament_generates_reports(
         self,
         basic_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that tournament generates report files."""
         # Enable report generation
@@ -335,7 +335,7 @@ class TestTournamentOutputs:
         await arbitrium.run_tournament("Test question?")
 
         # Check that output directory has files
-        output_files = list(tmp_output_dir.glob("*"))
+        output_files = list(tmp_dir.glob("*"))
         # Should have champion report and provenance
         assert len(output_files) >= 2
 
@@ -343,11 +343,11 @@ class TestTournamentOutputs:
     async def test_champion_answer_returned(
         self,
         arbitrium_instance: Arbitrium,
-        simple_question: str,
+        sample_question: str,
     ) -> None:
         """Test that champion's answer is returned as result."""
         result, _metrics = await arbitrium_instance.run_tournament(
-            simple_question
+            sample_question
         )
 
         # Result should be the champion's answer

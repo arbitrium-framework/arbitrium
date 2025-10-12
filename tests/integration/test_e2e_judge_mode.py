@@ -13,7 +13,7 @@ class TestJudgeMode:
     async def test_tournament_with_judge_model(
         self,
         basic_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test tournament with designated judge model."""
         # Configure judge model

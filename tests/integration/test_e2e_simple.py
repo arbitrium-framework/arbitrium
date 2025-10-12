@@ -141,7 +141,7 @@ class TestKnowledgeBankBasics:
     async def test_knowledge_bank_initialized(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB is initialized when enabled."""
         arbitrium = await Arbitrium.from_settings(
@@ -165,7 +165,7 @@ class TestKnowledgeBankBasics:
     async def test_knowledge_bank_can_add_insights(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB can add insights."""
         arbitrium = await Arbitrium.from_settings(
@@ -202,7 +202,7 @@ class TestConfigurationValidation:
     async def test_minimal_valid_config_accepted(
         self,
         minimal_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that minimal valid config is accepted."""
         arbitrium = await Arbitrium.from_settings(

@@ -13,7 +13,7 @@ class TestModelFailures:
     async def test_tournament_continues_with_partially_failed_models(
         self,
         basic_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that tournament continues when some models fail."""
         arbitrium = await Arbitrium.from_settings(
@@ -153,7 +153,7 @@ class TestInvalidResponses:
     async def test_very_short_response_handling(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test handling of very short responses."""
         arbitrium = await Arbitrium.from_settings(
@@ -208,7 +208,7 @@ class TestEdgeCases:
     async def test_single_model_tournament(
         self,
         minimal_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test tournament with only one model."""
         # Configure with single model
@@ -520,7 +520,7 @@ class TestValidationEdgeCases:
     @pytest.mark.asyncio
     async def test_null_values_in_config_handled_gracefully(
         self,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that null values in config are handled gracefully."""
         config_with_nulls = {
@@ -534,7 +534,7 @@ class TestValidationEdgeCases:
                     "temperature": 0.7,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         # Should either use default or handle gracefully

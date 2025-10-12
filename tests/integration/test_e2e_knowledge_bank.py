@@ -13,7 +13,7 @@ class TestKnowledgeBankExtraction:
     async def test_knowledge_bank_extracts_insights_from_eliminated_model(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB extracts insights when a model is eliminated."""
         arbitrium = await Arbitrium.from_settings(
@@ -62,7 +62,7 @@ class TestKnowledgeBankExtraction:
     async def test_knowledge_bank_skips_invalid_responses(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB skips invalid/short responses during extraction."""
         arbitrium = await Arbitrium.from_settings(
@@ -90,7 +90,7 @@ class TestKnowledgeBankExtraction:
     async def test_knowledge_bank_accepts_valid_responses(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB accepts valid responses for extraction."""
         arbitrium = await Arbitrium.from_settings(
@@ -118,7 +118,7 @@ class TestKnowledgeBankDuplicateDetection:
     async def test_knowledge_bank_prevents_duplicate_insights(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB prevents adding duplicate insights."""
         # Set high similarity threshold to catch duplicates
@@ -158,7 +158,7 @@ class TestKnowledgeBankDuplicateDetection:
     async def test_knowledge_bank_similarity_threshold_affects_deduplication(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that similarity threshold controls duplicate detection."""
         # Test with low threshold (strict - more duplicates caught)
@@ -189,7 +189,7 @@ class TestKnowledgeBankMaxInsights:
     async def test_knowledge_bank_enforces_max_insights_limit(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB enforces max insights limit using LRU eviction."""
         # Set low max insights limit
@@ -218,7 +218,7 @@ class TestKnowledgeBankMaxInsights:
     async def test_knowledge_bank_lru_eviction_removes_oldest(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that LRU eviction removes oldest insights first."""
         kb_enabled_config["knowledge_bank"]["max_insights"] = 3
@@ -260,7 +260,7 @@ class TestKnowledgeBankFormatting:
     async def test_knowledge_bank_formats_insights_for_context(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB formats insights correctly for injection."""
         arbitrium = await Arbitrium.from_settings(
@@ -293,7 +293,7 @@ class TestKnowledgeBankFormatting:
     async def test_knowledge_bank_returns_empty_when_disabled(
         self,
         basic_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB returns empty string when disabled."""
         # Ensure KB is disabled
@@ -319,7 +319,7 @@ class TestKnowledgeBankFormatting:
     async def test_knowledge_bank_returns_empty_when_no_insights(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB returns empty string when no insights exist."""
         arbitrium = await Arbitrium.from_settings(
@@ -342,7 +342,7 @@ class TestKnowledgeBankIntegration:
     async def test_knowledge_bank_insights_injected_into_improvement(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB insights are injected into improvement prompts."""
         arbitrium = await Arbitrium.from_settings(
@@ -382,7 +382,7 @@ class TestKnowledgeBankIntegration:
     async def test_tournament_with_kb_vs_without_kb(
         self,
         basic_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test tournament behavior with and without KB enabled."""
         # Run with KB disabled
@@ -452,7 +452,7 @@ class TestKnowledgeBankParsing:
     async def test_knowledge_bank_parses_bullet_points(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB correctly parses bullet point format."""
         arbitrium = await Arbitrium.from_settings(
@@ -480,7 +480,7 @@ class TestKnowledgeBankParsing:
     async def test_knowledge_bank_parses_numbered_lists(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB correctly parses numbered list format."""
         arbitrium = await Arbitrium.from_settings(
@@ -507,7 +507,7 @@ class TestKnowledgeBankParsing:
     async def test_knowledge_bank_skips_short_lines(
         self,
         kb_enabled_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that KB skips short or header-like lines."""
         arbitrium = await Arbitrium.from_settings(
