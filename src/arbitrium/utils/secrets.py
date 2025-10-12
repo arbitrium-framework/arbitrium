@@ -134,9 +134,7 @@ def _handle_missing_op_cli(
     ) from error
 
 
-def _fetch_secret_from_1password(
-    provider: str, env_var: str, op_path: str
-) -> None:
+def _fetch_secret_from_1password(env_var: str, op_path: str) -> None:
     """Fetch a single secret from 1Password and set it in environment."""
     try:
         result = subprocess.run(
@@ -201,4 +199,4 @@ def load_secrets(
 
     for provider in providers_to_fetch:
         env_var, op_path = secret_config[provider]
-        _fetch_secret_from_1password(provider, env_var, op_path)
+        _fetch_secret_from_1password(env_var, op_path)

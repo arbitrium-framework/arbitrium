@@ -10,6 +10,7 @@ from typing import Any
 
 import litellm
 
+from ..config.defaults import DEFAULT_COMPRESSION_MODEL
 from ..logging import get_contextual_logger
 from ..utils.constants import ERROR_PATTERNS
 from ..utils.exceptions import ModelResponseError
@@ -203,7 +204,7 @@ class BaseModel(ABC):
         temperature: float,
         context_window: int | None = None,
         use_llm_compression: bool = True,
-        compression_model: str = "ollama/qwen:1.8b",
+        compression_model: str = DEFAULT_COMPRESSION_MODEL,
     ):
         """
         Initialize a model.
@@ -268,7 +269,7 @@ class LiteLLMModel(BaseModel):
         reasoning_effort: str | None = None,
         model_config: dict[str, Any] | None = None,
         use_llm_compression: bool = True,
-        compression_model: str = "ollama/qwen:1.8b",
+        compression_model: str = DEFAULT_COMPRESSION_MODEL,
         system_prompt: str | None = None,
     ):
         """Initialize a LiteLLM-backed model."""
@@ -444,9 +445,7 @@ class LiteLLMModel(BaseModel):
         logger.debug("💰 No cost information found in response, returning 0.0")
         return 0.0
 
-    def _handle_prompt_size_validation(
-        self, prompt: str, logger: Any
-    ) -> str | None:
+    def _handle_prompt_size_validation(self, prompt: str) -> str | None:
         """Handle prompt size validation - DISABLED to preserve full prompts.
 
         Users pay for the full context, so we don't truncate anything.
@@ -455,7 +454,7 @@ class LiteLLMModel(BaseModel):
         # Always return the full prompt without any truncation or compression
         return prompt
 
-    def _clean_response_content(self, content: str, logger: Any) -> str:
+    def _clean_response_content(self, content: str) -> str:
         """Clean response content - preserve markdown formatting.
 
         User pays for full content including markdown formatting.
@@ -471,7 +470,7 @@ class LiteLLMModel(BaseModel):
         content = self._extract_response_content(response)
 
         if content and content.strip():
-            cleaned_content = self._clean_response_content(content, logger)
+            cleaned_content = self._clean_response_content(content)
             return ModelResponse.create_success(cleaned_content, cost=cost)
 
         # Try fallback
@@ -497,7 +496,7 @@ class LiteLLMModel(BaseModel):
             return ModelResponse.create_error("Empty prompt provided")
 
         # Handle prompt size validation
-        validated_prompt = self._handle_prompt_size_validation(prompt, logger)
+        validated_prompt = self._handle_prompt_size_validation(prompt)
         if validated_prompt is None:
             method = (
                 "LLM compression" if self.use_llm_compression else "truncation"
@@ -656,6 +655,125 @@ class LiteLLMModel(BaseModel):
             return {}
 
     @classmethod
+    def _validate_required_fields(
+        cls, model_key: str, model_config: dict[str, Any]
+    ) -> None:
+        """Validate required configuration fields."""
+        required_fields = ["model_name", "provider"]
+        for field in required_fields:
+            if field not in model_config:
+                raise ValueError(
+                    f"Required field '{field}' missing in model configuration for {model_key}"
+                )
+
+    @classmethod
+    def _auto_detect_context_window(
+        cls,
+        model_key: str,
+        model_config: dict[str, Any],
+        litellm_info: dict[str, Any],
+        logger: Any,
+    ) -> None:
+        """Auto-detect and set context_window if not provided."""
+        if (
+            "context_window" not in model_config
+            or model_config["context_window"] is None
+        ):
+            context_window = litellm_info.get("max_input_tokens")
+            if context_window:
+                logger.info(
+                    f"Auto-detected context_window={context_window} for {model_key} from LiteLLM"
+                )
+                model_config["context_window"] = context_window
+            else:
+                raise ValueError(
+                    f"context_window not provided for {model_key} and could not be auto-detected from LiteLLM. "
+                    f"Please specify context_window in config or ensure model is supported by LiteLLM."
+                )
+
+    @classmethod
+    def _auto_detect_max_tokens(
+        cls,
+        model_key: str,
+        model_config: dict[str, Any],
+        litellm_info: dict[str, Any],
+        logger: Any,
+    ) -> None:
+        """Auto-detect and set max_tokens if not provided, capped at 25% of context."""
+        if (
+            "max_tokens" not in model_config
+            or model_config["max_tokens"] is None
+        ):
+            max_output_tokens = litellm_info.get(
+                "max_output_tokens"
+            ) or litellm_info.get("max_tokens")
+            if max_output_tokens:
+                context_win = model_config.get("context_window", 128000)
+                safe_max_tokens = min(
+                    max_output_tokens, int(context_win * 0.25)
+                )
+                logger.info(
+                    f"Auto-detected max_tokens={safe_max_tokens} for {model_key} (from LiteLLM: {max_output_tokens}, capped at 25% of context)"
+                )
+                model_config["max_tokens"] = safe_max_tokens
+            else:
+                raise ValueError(
+                    f"max_tokens not provided for {model_key} and could not be auto-detected from LiteLLM. "
+                    f"Please specify max_tokens in config or ensure model is supported by LiteLLM."
+                )
+
+    @classmethod
+    def _validate_temperature(
+        cls, model_key: str, model_config: dict[str, Any]
+    ) -> None:
+        """Validate that temperature is provided in config."""
+        if "temperature" not in model_config:
+            raise ValueError(
+                f"temperature is required in model configuration for {model_key}"
+            )
+
+    @classmethod
+    def _validate_and_get_reasoning_effort(
+        cls, model_key: str, model_config: dict[str, Any], logger: Any
+    ) -> str | None:
+        """Validate and return reasoning_effort setting."""
+        reasoning_effort = model_config.get("reasoning_effort")
+        if reasoning_effort:
+            supported_efforts = ["low", "medium", "high"]
+            if reasoning_effort not in supported_efforts:
+                logger.warning(
+                    f"Invalid reasoning_effort '{reasoning_effort}' for {model_key}. Must be one of {supported_efforts}"
+                )
+                return None
+            logger.info(
+                f"Using reasoning_effort={reasoning_effort} for {model_key}"
+            )
+        return reasoning_effort
+
+    @classmethod
+    def _get_compression_settings(
+        cls, model_config: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """Get LLM compression settings from config."""
+        use_llm_compression = model_config.get("llm_compression", True)
+        compression_model = model_config.get(
+            "compression_model", DEFAULT_COMPRESSION_MODEL
+        )
+        return use_llm_compression, compression_model
+
+    @classmethod
+    def _get_and_log_system_prompt(
+        cls, model_key: str, model_config: dict[str, Any], logger: Any
+    ) -> str | None:
+        """Get system prompt from config and log if present."""
+        system_prompt = model_config.get("system_prompt")
+        if system_prompt:
+            logger.info(
+                f"Using system_prompt for {model_key}: {system_prompt[:100]}..."
+            )
+        return system_prompt
+
+    @classmethod
     def from_config(
         cls, model_key: str, model_config: dict[str, Any]
     ) -> "LiteLLMModel":
@@ -673,95 +791,34 @@ class LiteLLMModel(BaseModel):
         """
         logger = _get_module_logger()
 
-        # Validate minimal required fields
-        required_fields = ["model_name", "provider"]
-        for field in required_fields:
-            if field not in model_config:
-                raise ValueError(
-                    f"Required field '{field}' missing in model configuration for {model_key}"
-                )
+        # Validate required fields
+        cls._validate_required_fields(model_key, model_config)
 
+        # Get model info from LiteLLM for auto-detection
         model_name = model_config["model_name"]
-
-        # Try to get model info from LiteLLM for auto-detection
         litellm_info = cls._get_model_info_from_litellm(model_name)
 
-        # Auto-detect context_window (input tokens limit)
-        if (
-            "context_window" not in model_config
-            or model_config["context_window"] is None
-        ):
-            context_window = litellm_info.get("max_input_tokens")
-            if context_window:
-                logger.info(
-                    f"Auto-detected context_window={context_window} for {model_key} from LiteLLM"
-                )
-                model_config["context_window"] = context_window
-            else:
-                raise ValueError(
-                    f"context_window not provided for {model_key} and could not be auto-detected from LiteLLM. "
-                    f"Please specify context_window in config or ensure model is supported by LiteLLM."
-                )
+        # Auto-detect missing configuration
+        cls._auto_detect_context_window(
+            model_key, model_config, litellm_info, logger
+        )
+        cls._auto_detect_max_tokens(
+            model_key, model_config, litellm_info, logger
+        )
+        cls._validate_temperature(model_key, model_config)
 
-        # Auto-detect max_tokens (default output tokens)
-        # Cap at 25% of context window to leave room for prompt and safety margin
-        if (
-            "max_tokens" not in model_config
-            or model_config["max_tokens"] is None
-        ):
-            max_output_tokens = litellm_info.get(
-                "max_output_tokens"
-            ) or litellm_info.get("max_tokens")
-            if max_output_tokens:
-                # If max_output_tokens >= context_window, it's likely wrong (same value used for both)
-                # Cap at 25% of context window for safety
-                context_win = model_config.get("context_window", 128000)
-                safe_max_tokens = min(
-                    max_output_tokens, int(context_win * 0.25)
-                )
-                logger.info(
-                    f"Auto-detected max_tokens={safe_max_tokens} for {model_key} (from LiteLLM: {max_output_tokens}, capped at 25% of context)"
-                )
-                model_config["max_tokens"] = safe_max_tokens
-            else:
-                raise ValueError(
-                    f"max_tokens not provided for {model_key} and could not be auto-detected from LiteLLM. "
-                    f"Please specify max_tokens in config or ensure model is supported by LiteLLM."
-                )
-
-        # Temperature is required in config
-        if "temperature" not in model_config:
-            raise ValueError(
-                f"temperature is required in model configuration for {model_key}"
-            )
-
-        # Check if model supports reasoning_effort
-        reasoning_effort = model_config.get("reasoning_effort")
-        if reasoning_effort:
-            supported_efforts = ["low", "medium", "high"]
-            if reasoning_effort not in supported_efforts:
-                logger.warning(
-                    f"Invalid reasoning_effort '{reasoning_effort}' for {model_key}. Must be one of {supported_efforts}"
-                )
-                reasoning_effort = None
-            else:
-                logger.info(
-                    f"Using reasoning_effort={reasoning_effort} for {model_key}"
-                )
-
-        # Get LLM compression settings from config
-        use_llm_compression = model_config.get("llm_compression", True)
-        compression_model = model_config.get(
-            "compression_model", "ollama/qwen:1.8b"
+        # Get optional settings
+        reasoning_effort = cls._validate_and_get_reasoning_effort(
+            model_key, model_config, logger
+        )
+        use_llm_compression, compression_model = cls._get_compression_settings(
+            model_config
+        )
+        system_prompt = cls._get_and_log_system_prompt(
+            model_key, model_config, logger
         )
 
-        # Get system_prompt from config (optional)
-        system_prompt = model_config.get("system_prompt")
-        if system_prompt:
-            logger.info(
-                f"Using system_prompt for {model_key}: {system_prompt[:100]}..."
-            )
-
+        # Create and return model instance
         return cls(
             model_key=model_key,
             model_name=model_config["model_name"],

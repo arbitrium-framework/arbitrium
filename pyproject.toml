@@ -193,6 +193,5 @@ disable_error_code = ["attr-defined"]
 # Evidence: Mutation score correlates with real fault detection
 [tool.mutmut]
 paths_to_mutate = ["src/arbitrium/core/"]
-tests_dir = "tests/"
-runner = "pytest"
+runner = "pytest tests/ -x -q"
 backup = false

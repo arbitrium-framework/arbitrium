@@ -52,9 +52,6 @@ class PromptBuilder:
         self,
         other_responses: dict[str, str] | None,
         display_name: str,
-        model: BaseModel,
-        own_answer: str,
-        initial_question: str,
     ) -> str:
         """Build other responses context text for improvement prompt."""
         if not other_responses:
@@ -124,7 +121,7 @@ class PromptBuilder:
             improvement_context, display_name
         )
         other_responses_text = self._build_other_responses_context(
-            other_responses, display_name, model, own_answer, initial_question
+            other_responses, display_name
         )
         full_context = self._build_full_improvement_context(
             context_text, other_responses_text
@@ -151,7 +148,6 @@ class PromptBuilder:
     def build_evaluation_prompt(
         self,
         initial_question: str,
-        evaluation_template: str,
         formatted_responses: str,
         model_names: list[str] | None = None,
     ) -> str:

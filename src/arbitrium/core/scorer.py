@@ -170,6 +170,59 @@ class ScoreExtractor:
 
         return None
 
+    def _try_extract_fractional_score(
+        self, match: re.Match, model_name: str  # type: ignore[type-arg]
+    ) -> float | None:
+        """Try to extract fractional score (numerator/denominator)."""
+        try:
+            numerator = float(match.group(1))
+            denominator = float(match.group(2))
+            score_value = (numerator / denominator) * 10.0
+            self.logger.debug(
+                f"Extracted fractional score {numerator}/{denominator} = {score_value}/10 for {model_name}"
+            )
+            return score_value
+        except ValueError:
+            # Group 1 is not a number, use group 2 as score
+            try:
+                score_value = float(match.group(2))
+                self.logger.debug(
+                    f"Extracted score {score_value} for {model_name}"
+                )
+                return score_value
+            except ValueError:
+                return None
+        except ZeroDivisionError:
+            return None
+
+    def _extract_simple_score(
+        self, match: re.Match, model_name: str  # type: ignore[type-arg]
+    ) -> float | None:
+        """Extract simple score from match (single value)."""
+        try:
+            score_value = float(
+                match.group(1) if len(match.groups()) == 1 else match.group(2)
+            )
+            self.logger.debug(
+                f"Extracted score {score_value} for {model_name}"
+            )
+            return score_value
+        except (ValueError, TypeError, IndexError):
+            return None
+
+    def _try_extract_score_from_match(
+        self, match: re.Match, model_name: str  # type: ignore[type-arg]
+    ) -> float | None:
+        """Try to extract score from a regex match."""
+        # Try fractional score if we have 2 groups
+        if len(match.groups()) >= 2 and match.group(2):
+            score = self._try_extract_fractional_score(match, model_name)
+            if score is not None:
+                return score
+
+        # Fall back to simple score extraction
+        return self._extract_simple_score(match, model_name)
+
     def _extract_score_for_model(
         self,
         evaluation_text: str,
@@ -188,42 +241,13 @@ class ScoreExtractor:
             )
 
             if match:
-                try:
-                    if len(match.groups()) >= 2 and match.group(2):
-                        try:
-                            # Try to interpret as fraction (numerator/denominator)
-                            numerator = float(match.group(1))
-                            denominator = float(match.group(2))
-                            score_value = (numerator / denominator) * 10.0
-                            self.logger.debug(
-                                f"Extracted fractional score {numerator}/{denominator} = {score_value}/10 for {model_name}"
-                            )
-                            return score_value
-                        except ValueError:
-                            # Group 1 is not a number, use group 2 as score
-                            score_value = float(match.group(2))
-                            self.logger.debug(
-                                f"Extracted score {score_value} for {model_name}"
-                            )
-                            return score_value
-                        except ZeroDivisionError:
-                            continue
-
-                    score_value = float(
-                        match.group(1)
-                        if len(match.groups()) == 1
-                        else match.group(2)
-                    )
-                    self.logger.debug(
-                        f"Extracted score {score_value} for {model_name}"
-                    )
-                    return score_value
-
-                except (ValueError, TypeError, IndexError):
-                    self.logger.warning(
-                        f"Invalid score value in pattern match for {model_name}"
-                    )
-                    continue
+                score = self._try_extract_score_from_match(match, model_name)
+                if score is not None:
+                    return score
+                # Continue to next pattern if this one failed
+                self.logger.warning(
+                    f"Invalid score value in pattern match for {model_name}"
+                )
 
         return None
 

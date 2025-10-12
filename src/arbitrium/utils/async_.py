@@ -233,7 +233,7 @@ async def async_input(
     input_future = loop.create_future()
 
     # Start input task
-    asyncio.create_task(  # noqa: RUF006
+    input_task = asyncio.create_task(
         _get_input_with_validation(
             input_future,
             prompt,
@@ -244,6 +244,8 @@ async def async_input(
             logger,
         )
     )
+    # Keep reference to prevent garbage collection
+    input_task.add_done_callback(lambda _: None)
 
     # Start timeout task if needed
     if timeout > 0:

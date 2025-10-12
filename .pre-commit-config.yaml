@@ -46,7 +46,7 @@ repos:
       - id: mypy
         name: mypy (strict mode for code health)
         additional_dependencies:
-          ["types-PyYAML", "types-aiofiles", "types-colorama", "types-requests"]
+          ["types-PyYAML", "types-aiofiles", "types-colorama", "types-requests", "pytest", "pytest-asyncio"]
         files: ^src/
 
   # ============================================================================

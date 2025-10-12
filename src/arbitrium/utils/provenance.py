@@ -8,6 +8,7 @@ Provides audit trail showing:
 - What insights came from eliminated models
 """
 
+import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
@@ -278,6 +279,15 @@ class ProvenanceReport:
 
         return "\n".join(md)
 
+    def _determine_strategy(self, phase_name: str) -> str:
+        """Determine strategy type from phase name."""
+        if "Criticism" in phase_name:
+            return "cross-criticism"
+        elif "Positive" in phase_name:
+            return "positive reinforcement"
+        else:
+            return "collaborative"
+
     def _extract_phases(self) -> list[dict[str, Any]]:
         """Extract tournament phases from history data."""
         phases = []
@@ -302,15 +312,7 @@ class ProvenanceReport:
                     {
                         "name": phase_name,
                         "type": phase_type,
-                        "strategy": (
-                            "cross-criticism"
-                            if "Criticism" in phase_name
-                            else (
-                                "positive reinforcement"
-                                if "Positive" in phase_name
-                                else "collaborative"
-                            )
-                        ),
+                        "strategy": self._determine_strategy(phase_name),
                         "criticisms": phase_data.get("criticisms"),
                         "feedback": phase_data.get("feedback"),
                         "improved_answers": phase_data.get("improved_answers")
@@ -390,16 +392,23 @@ class ProvenanceReport:
         champion_md_path = output_path / champion_md_filename
 
         champion_md_content = self._generate_champion_with_provenance()
-        with open(champion_md_path, "w", encoding="utf-8") as f:
-            f.write(champion_md_content)
+        await asyncio.to_thread(
+            lambda: champion_md_path.write_text(
+                champion_md_content, encoding="utf-8"
+            )
+        )
 
         # 2. Save compact provenance JSON (metadata only, no full history)
         provenance_json_filename = f"arbitrium_{timestamp}_provenance.json"
         provenance_json_path = output_path / provenance_json_filename
 
         provenance_data = self._generate_provenance_metadata()
-        with open(provenance_json_path, "w", encoding="utf-8") as f:
-            json.dump(provenance_data, f, indent=2, ensure_ascii=False)
+        await asyncio.to_thread(
+            lambda: provenance_json_path.write_text(
+                json.dumps(provenance_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        )
 
         # 3. Save complete history JSON (all tournament data)
         complete_history_filename = (
@@ -407,8 +416,12 @@ class ProvenanceReport:
         )
         complete_history_path = output_path / complete_history_filename
 
-        with open(complete_history_path, "w", encoding="utf-8") as f:
-            json.dump(self.tournament_data, f, indent=2, ensure_ascii=False)
+        await asyncio.to_thread(
+            lambda: complete_history_path.write_text(
+                json.dumps(self.tournament_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        )
 
         return {
             "champion_md": str(champion_md_path),

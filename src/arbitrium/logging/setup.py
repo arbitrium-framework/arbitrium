@@ -104,6 +104,54 @@ class ColorFormatter(logging.Formatter):
 
             return strip_ansi_codes(original_msg)
 
+    def _format_section_header(
+        self, message: str, should_colorize: bool
+    ) -> str:
+        """Format section header display type."""
+        if should_colorize:
+            return f"\n{Fore.CYAN}--- {message} ---{Style.RESET_ALL}"
+        return f"\n--- {message} ---"
+
+    def _format_header(self, message: str, should_colorize: bool) -> str:
+        """Format header display type with border."""
+        border = "=" * 50
+        if should_colorize:
+            return (
+                f"\n{Fore.CYAN}{border}\n{message}\n{border}{Style.RESET_ALL}"
+            )
+        return f"\n{border}\n{message}\n{border}"
+
+    def _format_model_response(
+        self, record: logging.LogRecord, message: str, should_colorize: bool
+    ) -> str:
+        """Format model response display type."""
+        model_name = getattr(record, "model_name", "Unknown")
+        color = (
+            self.MODEL_COLORS.get(model_name, Fore.WHITE)
+            if should_colorize
+            else ""
+        )
+        reset = Style.RESET_ALL if should_colorize else ""
+
+        lines = [
+            f"\n{color}Model: {model_name}{reset}",
+            f"{color}Response:{reset}",
+        ]
+        for line in message.split("\n"):
+            lines.append(f"{color}{line}{reset}")
+        lines.append(f"{color}{'-' * 20}{reset}")
+        return "\n".join(lines)
+
+    def _format_colored_text(
+        self, record: logging.LogRecord, message: str, should_colorize: bool
+    ) -> str:
+        """Format colored text display type."""
+        color_name = getattr(record, "color", None)
+        if should_colorize and color_name:
+            color = self.MODEL_COLORS.get(color_name, Fore.WHITE)
+            return f"{color}{message}{Style.RESET_ALL}"
+        return message
+
     def _format_display(
         self,
         record: logging.LogRecord,
@@ -114,44 +162,15 @@ class ColorFormatter(logging.Formatter):
         message = record.getMessage()
 
         if display_type == "section_header":
-            # Format: \n--- Message ---
-            if should_colorize:
-                return f"\n{Fore.CYAN}--- {message} ---{Style.RESET_ALL}"
-            return f"\n--- {message} ---"
-
+            return self._format_section_header(message, should_colorize)
         elif display_type == "header":
-            # Format: \n========== Message ==========
-            border = "=" * 50
-            if should_colorize:
-                return f"\n{Fore.CYAN}{border}\n{message}\n{border}{Style.RESET_ALL}"
-            return f"\n{border}\n{message}\n{border}"
-
+            return self._format_header(message, should_colorize)
         elif display_type == "model_response":
-            # Format model response with color
-            model_name = getattr(record, "model_name", "Unknown")
-            color = (
-                self.MODEL_COLORS.get(model_name, Fore.WHITE)
-                if should_colorize
-                else ""
+            return self._format_model_response(
+                record, message, should_colorize
             )
-            reset = Style.RESET_ALL if should_colorize else ""
-
-            lines = [
-                f"\n{color}Model: {model_name}{reset}",
-                f"{color}Response:{reset}",
-            ]
-            for line in message.split("\n"):
-                lines.append(f"{color}{line}{reset}")
-            lines.append(f"{color}{'-' * 20}{reset}")
-            return "\n".join(lines)
-
         elif display_type == "colored_text":
-            # Format text with specific color
-            color_name = getattr(record, "color", None)
-            if should_colorize and color_name:
-                color = self.MODEL_COLORS.get(color_name, Fore.WHITE)
-                return f"{color}{message}{Style.RESET_ALL}"
-            return message
+            return self._format_colored_text(record, message, should_colorize)
 
         # Fallback to regular formatting
         result: str = super().format(record)
@@ -347,10 +366,6 @@ def setup_logging(
 
     # Import ContextFilter - always needed for context injection
     from arbitrium.logging.structured import ContextFilter
-
-    # Import structured formatters if needed
-    if json_format or include_module:
-        pass
 
     # Format strings
     console_format = "[%(levelname)s] %(message)s"  # Cleaner console output
