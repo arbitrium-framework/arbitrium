@@ -36,19 +36,16 @@ def _process_structural_token(token: Any, plain_parts: list[str]) -> None:
     """Process structural tokens (headings, paragraphs, lists, breaks)."""
     if token.type in [
         "heading_open",
-        "paragraph_open",
-        "bullet_list_open",
-        "ordered_list_open",
-    ]:
-        plain_parts.append("\n")
-    elif token.type in [
         "heading_close",
+        "paragraph_open",
         "paragraph_close",
+        "bullet_list_open",
         "bullet_list_close",
+        "ordered_list_open",
         "ordered_list_close",
+        "softbreak",
+        "hardbreak",
     ]:
-        plain_parts.append("\n")
-    elif token.type in ["softbreak", "hardbreak"]:
         plain_parts.append("\n")
 
 

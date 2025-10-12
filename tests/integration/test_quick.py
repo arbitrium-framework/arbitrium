@@ -6,6 +6,7 @@ import asyncio
 import sys
 
 from arbitrium import Arbitrium
+from arbitrium.cli.args import DEFAULT_CONFIG_FILE
 from arbitrium.logging import get_contextual_logger, setup_logging
 
 
@@ -24,8 +25,8 @@ async def main() -> None:
         "--config",
         "-c",
         type=str,
-        default="config.example.yml",
-        help="Path to config file (default: config.example.yml)",
+        default=DEFAULT_CONFIG_FILE,
+        help=f"Path to config file (default: {DEFAULT_CONFIG_FILE})",
     )
     parser.add_argument(
         "--question",

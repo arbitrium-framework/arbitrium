@@ -5,13 +5,14 @@ This module provides the single entry point for the Arbitrium Framework.
 All initialization, execution, and configuration is handled through the Arbitrium class.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
 from arbitrium.config.loader import Config
 from arbitrium.core.comparison import ModelComparison
 from arbitrium.logging import get_contextual_logger
-from arbitrium.models.base import LiteLLMModel, ModelResponse
+from arbitrium.models.base import BaseModel, ModelResponse
 from arbitrium.models.factory import create_models_from_config
 from arbitrium.utils.constants import HEALTH_CHECK_PROMPT
 from arbitrium.utils.exceptions import ConfigurationError
@@ -50,13 +51,17 @@ class _InternalHost:
     async def write_file(self, path: str, content: str) -> None:
         """Write file to disk."""
         file_path = self.base_dir / path
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
+        await asyncio.to_thread(
+            file_path.parent.mkdir, parents=True, exist_ok=True
+        )
+        await asyncio.to_thread(
+            file_path.write_text, content, encoding="utf-8"
+        )
 
     async def read_file(self, path: str) -> str:
         """Read file from disk."""
         file_path = self.base_dir / path
-        return file_path.read_text(encoding="utf-8")
+        return await asyncio.to_thread(file_path.read_text, encoding="utf-8")
 
     def get_secret(self, key: str) -> str | None:
         """Get secret from environment."""
@@ -89,8 +94,8 @@ class Arbitrium:
     def __init__(
         self,
         config: Config,
-        all_models: dict[str, LiteLLMModel],
-        healthy_models: dict[str, LiteLLMModel],
+        all_models: dict[str, BaseModel],
+        healthy_models: dict[str, BaseModel],
         failed_models: dict[str, Exception],
     ) -> None:
         """
@@ -118,10 +123,109 @@ class Arbitrium:
         self._all_models = all_models
         self._healthy_models = healthy_models
         self._failed_models = failed_models
+        self._last_comparison: ModelComparison | None = None
 
         # Internal components - not exposed to users
         self._event_handler = _InternalEventHandler()
         self._host = _InternalHost(base_dir=str(outputs_dir))
+
+    @staticmethod
+    def _deep_merge(
+        base: dict[str, Any], override: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Recursively merge two dictionaries.
+
+        Args:
+            base: Base dictionary
+            override: Dictionary with values to override base
+
+        Returns:
+            Merged dictionary
+        """
+        result = base.copy()
+        for key, value in override.items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
+                result[key] = Arbitrium._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    @classmethod
+    def _merge_settings_with_defaults(
+        cls, settings: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Merge settings with defaults.
+
+        Only models explicitly mentioned in settings are used.
+
+        Args:
+            settings: User settings dictionary
+
+        Returns:
+            Merged settings dictionary
+        """
+        from arbitrium.config.defaults import get_defaults
+
+        logger.info("Merging settings with defaults")
+        defaults = get_defaults()
+
+        # Merge non-model sections with defaults (prompts, retry, features)
+        defaults_no_models = {
+            k: v for k, v in defaults.items() if k != "models"
+        }
+        merged_settings = cls._deep_merge(defaults_no_models, settings)
+
+        # For models: ONLY models mentioned in settings are used
+        if "models" in settings:
+            user_models = {}
+            for model_key, model_cfg in settings["models"].items():
+                # Get default config for this model (if exists)
+                default_cfg = defaults.get("models", {}).get(model_key, {})
+                # Merge: defaults + user overrides
+                merged_model = cls._deep_merge(default_cfg, model_cfg or {})
+                user_models[model_key] = merged_model
+            merged_settings["models"] = user_models
+        else:
+            merged_settings["models"] = {}
+
+        return merged_settings
+
+    @staticmethod
+    def _validate_and_create_config(merged_settings: dict[str, Any]) -> Config:
+        """
+        Validate settings and create Config object.
+
+        Args:
+            merged_settings: Merged settings dictionary
+
+        Returns:
+            Validated Config object
+
+        Raises:
+            ConfigurationError: If settings are invalid
+        """
+        from arbitrium.config.loader import validate_config
+
+        logger.info("Validating settings dictionary")
+        is_valid, errors = validate_config(merged_settings)
+        if not is_valid:
+            error_details = "\n  - ".join(errors)
+            raise ConfigurationError(
+                f"Invalid configuration provided. Missing or invalid sections:\n  - {error_details}\n\n"
+                f"Required sections: models, retry, features, prompts, outputs_dir"
+            )
+
+        # Create a Config object and populate it with merged settings
+        config_obj = Config()
+        config_obj.config_data = merged_settings
+        config_obj._setup_config_shortcuts()
+        return config_obj
 
     @classmethod
     async def from_settings(
@@ -158,70 +262,15 @@ class Arbitrium:
             >>> }
             >>> arbitrium = await Arbitrium.from_settings(settings)
         """
-        from arbitrium.config.defaults import get_defaults
-        from arbitrium.config.loader import validate_config
+        # Merge with defaults and validate
+        merged_settings = cls._merge_settings_with_defaults(settings)
+        config_obj = cls._validate_and_create_config(merged_settings)
 
-        # Step 0: Merge with defaults (so prompts, retry, features are optional)
-        # BUT: Only use models explicitly mentioned in settings
-        logger.info("Merging settings with defaults")
-        defaults = get_defaults()
-
-        # Deep merge helper
-        def deep_merge(
-            base: dict[str, Any], override: dict[str, Any]
-        ) -> dict[str, Any]:
-            result = base.copy()
-            for key, value in override.items():
-                if (
-                    key in result
-                    and isinstance(result[key], dict)
-                    and isinstance(value, dict)
-                ):
-                    result[key] = deep_merge(result[key], value)
-                else:
-                    result[key] = value
-            return result
-
-        # Merge non-model sections with defaults (prompts, retry, features)
-        defaults_no_models = {
-            k: v for k, v in defaults.items() if k != "models"
-        }
-        merged_settings = deep_merge(defaults_no_models, settings)
-
-        # For models: ONLY models mentioned in settings are used
-        # For each mentioned model, merge with its defaults
-        if "models" in settings:
-            user_models = {}
-            for model_key, model_cfg in settings["models"].items():
-                # Get default config for this model (if exists)
-                default_cfg = defaults.get("models", {}).get(model_key, {})
-                # Merge: defaults + user overrides
-                merged_model = deep_merge(default_cfg, model_cfg or {})
-                user_models[model_key] = merged_model
-            merged_settings["models"] = user_models
-        else:
-            merged_settings["models"] = {}
-
-        # Step 1: Validate merged settings (including outputs_dir)
-        logger.info("Validating settings dictionary")
-        is_valid, errors = validate_config(merged_settings)
-        if not is_valid:
-            error_details = "\n  - ".join(errors)
-            raise ConfigurationError(
-                f"Invalid configuration provided. Missing or invalid sections:\n  - {error_details}\n\n"
-                f"Required sections: models, retry, features, prompts, outputs_dir"
-            )
-
-        # Create a Config object and populate it with merged settings
-        config_obj = Config()
-        config_obj.config_data = merged_settings
-        config_obj._setup_config_shortcuts()
-
-        # Step 2: Load secrets
+        # Load secrets if needed
         if not skip_secrets:
             cls._load_secrets(merged_settings)
 
-        # Step 3: Create models
+        # Create models
         logger.info("Creating models from settings")
         all_models = create_models_from_config(merged_settings)
 
@@ -234,11 +283,11 @@ class Arbitrium:
                 failed_models={},
             )
 
-        # Step 4: Health check (optional)
-        healthy_models = dict(all_models)  # Start with all models
-        failed_models: dict[str, Exception] = {}
-
-        if not skip_health_check:
+        # Health check (optional)
+        if skip_health_check:
+            healthy_models = dict(all_models)
+            failed_models: dict[str, Exception] = {}
+        else:
             healthy_models, failed_models = await cls._health_check_models(
                 all_models
             )
@@ -299,6 +348,37 @@ class Arbitrium:
         )
 
     @staticmethod
+    def _get_active_providers(config: dict[str, Any]) -> set[str]:
+        """Extract active providers from config."""
+        return {
+            model_cfg.get("provider", "").lower()
+            for model_cfg in config.get("models", {}).values()
+            if model_cfg.get("provider")
+        }
+
+    @staticmethod
+    def _should_skip_secrets_loading(
+        config: dict[str, Any], active_providers: set[str]
+    ) -> bool:
+        """Determine if secrets loading should be skipped."""
+        # Skip if all providers are local (don't require secrets)
+        local_providers = {"ollama"}
+        if active_providers and active_providers.issubset(local_providers):
+            logger.info(
+                "All models use local providers, skipping secret loading"
+            )
+            return True
+
+        # Skip if no secrets section in config
+        if "secrets" not in config:
+            logger.info(
+                "No secrets section in config, skipping secret loading"
+            )
+            return True
+
+        return False
+
+    @staticmethod
     def _load_secrets(config: dict[str, Any]) -> None:
         """
         Load secrets for configured models.
@@ -306,25 +386,9 @@ class Arbitrium:
         Args:
             config: Configuration dictionary
         """
-        # Check if all providers are local (don't require secrets)
-        active_providers = {
-            model_cfg.get("provider", "").lower()
-            for model_cfg in config.get("models", {}).values()
-            if model_cfg.get("provider")
-        }
+        active_providers = Arbitrium._get_active_providers(config)
 
-        local_providers = {"ollama"}
-        if active_providers and active_providers.issubset(local_providers):
-            logger.info(
-                "All models use local providers, skipping secret loading"
-            )
-            return
-
-        # Skip if no secrets section in config
-        if "secrets" not in config:
-            logger.info(
-                "No secrets section in config, skipping secret loading"
-            )
+        if Arbitrium._should_skip_secrets_loading(config, active_providers):
             return
 
         try:
@@ -337,8 +401,8 @@ class Arbitrium:
 
     @staticmethod
     async def _health_check_models(
-        models: dict[str, LiteLLMModel],
-    ) -> tuple[dict[str, LiteLLMModel], dict[str, Exception]]:
+        models: dict[str, BaseModel],
+    ) -> tuple[dict[str, BaseModel], dict[str, Exception]]:
         """
         Perform health check on all models.
 
@@ -350,7 +414,7 @@ class Arbitrium:
         """
         logger.info(f"Performing health check on {len(models)} models...")
 
-        healthy: dict[str, LiteLLMModel] = {}
+        healthy: dict[str, BaseModel] = {}
         failed: dict[str, Exception] = {}
 
         for model_key, model in models.items():
@@ -377,12 +441,12 @@ class Arbitrium:
     # === Public Properties ===
 
     @property
-    def healthy_models(self) -> dict[str, LiteLLMModel]:
+    def healthy_models(self) -> dict[str, BaseModel]:
         """Get only models that passed health check."""
         return self._healthy_models
 
     @property
-    def all_models(self) -> dict[str, LiteLLMModel]:
+    def all_models(self) -> dict[str, BaseModel]:
         """Get all models (including those that failed health check)."""
         return self._all_models
 
@@ -416,7 +480,7 @@ class Arbitrium:
     async def run_tournament(
         self,
         question: str,
-        models: dict[str, LiteLLMModel] | None = None,
+        models: dict[str, BaseModel] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """
         Run a full Arbitrium tournament for the given question.
@@ -462,6 +526,7 @@ class Arbitrium:
         logger.info(f"Starting tournament with {len(models)} models")
 
         comparison = self._create_comparison(models)
+        self._last_comparison = comparison
         result = await comparison.run(question)
 
         logger.info("Tournament completed successfully")
@@ -555,7 +620,7 @@ class Arbitrium:
 
     def _create_comparison(
         self,
-        models: dict[str, LiteLLMModel] | None = None,
+        models: dict[str, BaseModel] | None = None,
     ) -> ModelComparison:
         """
         Create a ModelComparison instance for tournament execution.
@@ -571,7 +636,7 @@ class Arbitrium:
 
         return ModelComparison(
             config=self.config_data,
-            models=models,  # type: ignore[arg-type]
+            models=models,
             event_handler=self._event_handler,  # type: ignore[arg-type]
             host=self._host,  # type: ignore[arg-type]
         )

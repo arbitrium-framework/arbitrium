@@ -5,10 +5,118 @@ from typing import Any
 
 import yaml
 
+from arbitrium.config.defaults import DEFAULT_COMPRESSION_MODEL
 from arbitrium.logging import get_contextual_logger
 
 # Module-level logger
 logger = get_contextual_logger("arbitrium.config")
+
+
+def _get_validation_schema() -> dict[str, dict[str, Any]]:
+    """Get the validation schema for configuration."""
+    return {
+        "models": {"required": True, "type": dict, "non_empty": True},
+        "retry": {"required": True, "type": dict},
+        "features": {"required": True, "type": dict},
+        "prompts": {"required": True, "type": dict},
+        "outputs_dir": {"required": True, "type": str, "non_empty": True},
+    }
+
+
+def _check_section_required(
+    section: str,
+    rules: dict[str, Any],
+    config_data: dict[str, Any],
+    errors: list[str],
+) -> bool:
+    """Check if required section is present."""
+    if rules["required"] and section not in config_data:
+        error_msg = f"Missing required section '{section}'"
+        logger.error(error_msg)
+        errors.append(error_msg)
+        return False
+    return True
+
+
+def _check_section_non_empty(
+    section: str,
+    rules: dict[str, Any],
+    config_data: dict[str, Any],
+    errors: list[str],
+) -> bool:
+    """Check if section is non-empty when required."""
+    if rules.get("non_empty") and not config_data.get(section):
+        error_msg = f"Section '{section}' is empty but must contain values"
+        logger.error(error_msg)
+        errors.append(error_msg)
+        return False
+    return True
+
+
+def _check_section_type(
+    section: str,
+    rules: dict[str, Any],
+    config_data: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Check if section has correct type."""
+    if "type" not in rules:
+        return
+
+    expected_type = rules["type"]
+    section_value = config_data.get(section)
+    expected_type_name = getattr(expected_type, "__name__", str(expected_type))
+    section_type_name = (
+        type(section_value).__name__ if section_value is not None else "None"
+    )
+
+    logger.debug(
+        f"Section '{section}' type check: value={section_type_name}, expected={expected_type_name}"
+    )
+
+    if section_value is not None and not isinstance(
+        section_value, expected_type
+    ):
+        type_name = getattr(expected_type, "__name__", str(expected_type))
+        error_msg = f"Section '{section}' has wrong type (expected {type_name}, got {section_type_name})"
+        logger.error(error_msg)
+        errors.append(error_msg)
+
+
+def _validate_section(
+    section: str,
+    rules: dict[str, Any],
+    config_data: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Validate a single configuration section."""
+    logger.debug(
+        f"Checking section '{section}': required={rules['required']}, present={section in config_data}"
+    )
+
+    if not _check_section_required(section, rules, config_data, errors):
+        return
+    if not _check_section_non_empty(section, rules, config_data, errors):
+        return
+    _check_section_type(section, rules, config_data, errors)
+
+
+def _validate_model_config(
+    model_name: str, model_config: dict[str, Any], errors: list[str]
+) -> None:
+    """Validate a single model configuration."""
+    if "model_name" not in model_config:
+        error_msg = (
+            f"Model '{model_name}' is missing required field 'model_name'"
+        )
+        logger.error(error_msg)
+        errors.append(error_msg)
+    if "provider" not in model_config:
+        error_msg = (
+            f"Model '{model_name}' is missing required field 'provider'"
+        )
+        logger.error(error_msg)
+        errors.append(error_msg)
 
 
 def validate_config(config_data: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -21,68 +129,17 @@ def validate_config(config_data: dict[str, Any]) -> tuple[bool, list[str]]:
         Tuple of (is_valid, error_messages)
     """
     errors: list[str] = []
-    schema = {
-        "models": {"required": True, "type": dict, "non_empty": True},
-        "retry": {"required": True, "type": dict},
-        "features": {"required": True, "type": dict},
-        "prompts": {"required": True, "type": dict},
-        "outputs_dir": {"required": True, "type": str, "non_empty": True},
-    }
+    schema = _get_validation_schema()
 
     logger.debug(f"Validating config sections: {list(config_data.keys())}")
 
+    # Validate each section
     for section, rules in schema.items():
-        logger.debug(
-            f"Checking section '{section}': required={rules['required']}, present={section in config_data}"
-        )
+        _validate_section(section, rules, config_data, errors)
 
-        if rules["required"] and section not in config_data:
-            error_msg = f"Missing required section '{section}'"
-            logger.error(error_msg)
-            errors.append(error_msg)
-            continue  # Skip further checks for this section
-
-        if rules.get("non_empty") and not config_data.get(section):
-            error_msg = f"Section '{section}' is empty but must contain values"
-            logger.error(error_msg)
-            errors.append(error_msg)
-            continue
-
-        if "type" in rules:
-            expected_type = rules["type"]
-            section_value = config_data.get(section)
-            expected_type_name = getattr(
-                expected_type, "__name__", str(expected_type)
-            )
-            section_type_name = (
-                type(section_value).__name__
-                if section_value is not None
-                else "None"
-            )
-            logger.debug(
-                f"Section '{section}' type check: value={section_type_name}, expected={expected_type_name}"
-            )
-            if section_value is not None and not isinstance(section_value, expected_type):  # type: ignore[arg-type]
-                type_name = getattr(
-                    expected_type, "__name__", str(expected_type)
-                )
-                error_msg = f"Section '{section}' has wrong type (expected {type_name}, got {section_type_name})"
-                logger.error(error_msg)
-                errors.append(error_msg)
-
+    # Validate model configurations
     for model_name, model_config in config_data.get("models", {}).items():
-        if "model_name" not in model_config:
-            error_msg = (
-                f"Model '{model_name}' is missing required field 'model_name'"
-            )
-            logger.error(error_msg)
-            errors.append(error_msg)
-        if "provider" not in model_config:
-            error_msg = (
-                f"Model '{model_name}' is missing required field 'provider'"
-            )
-            logger.error(error_msg)
-            errors.append(error_msg)
+        _validate_model_config(model_name, model_config, errors)
 
     is_valid = len(errors) == 0
     logger.debug(
@@ -149,8 +206,8 @@ class Config:
         logger.debug(f"Loaded defaults with sections: {list(defaults.keys())}")
         return defaults
 
-    def _load_config_file(self) -> bool:
-        """Load and parse the YAML config file."""
+    def _validate_config_path(self) -> bool:
+        """Validate that config path is set and exists."""
         if self.config_path is None:
             logger.error(
                 "No config path specified. The framework requires an explicit config file path."
@@ -163,12 +220,94 @@ class Config:
             )
             return False
 
-        with open(self.config_path, encoding="utf-8") as f:
-            try:
-                user_config = yaml.safe_load(f)
-            except yaml.YAMLError as e:
-                logger.error(f"Failed to parse YAML config file: {e}")
-                return False
+        return True
+
+    def _parse_yaml_file(self) -> dict[str, Any] | None:
+        """Parse YAML file and return config data."""
+        try:
+            with open(self.config_path, encoding="utf-8") as f:  # type: ignore[arg-type]
+                result = yaml.safe_load(f)
+                if result is None:
+                    return None
+                return dict(result) if isinstance(result, dict) else None
+        except yaml.YAMLError as e:
+            logger.error(f"Failed to parse YAML config file: {e}")
+            return None
+
+    def _merge_single_model(
+        self,
+        model_key: str,
+        user_model_config: dict[str, Any],
+        default_models: dict[str, dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Merge a single model configuration with defaults."""
+        base_model = default_models.get(model_key, {})
+        if not base_model:
+            logger.warning(
+                f"Model '{model_key}' not found in defaults. "
+                f"You must provide full configuration (provider, model_name, etc.)"
+            )
+
+        user_model = user_model_config or {}
+        if base_model or user_model:
+            return self._deep_merge(base_model, user_model)
+        return None
+
+    def _build_filtered_models(
+        self,
+        user_config: dict[str, Any],
+        default_models: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Build filtered models dict with only user-specified models."""
+        user_model_keys = list(user_config["models"].keys())
+
+        logger.debug(f"User specified models: {user_model_keys}")
+        logger.debug(
+            f"Available default models: {list(default_models.keys())}"
+        )
+
+        filtered_models = {}
+        for model_key in user_model_keys:
+            merged_model = self._merge_single_model(
+                model_key, user_config["models"][model_key], default_models
+            )
+            if merged_model:
+                filtered_models[model_key] = merged_model
+
+        logger.info(
+            f"Loaded {len(filtered_models)} models: {list(filtered_models.keys())}"
+        )
+        return filtered_models
+
+    def _merge_with_models_handling(self, user_config: dict[str, Any]) -> None:
+        """Merge user config with special handling for models section."""
+        if "models" not in user_config:
+            # No models in user config - use all defaults
+            self.config_data = self._deep_merge(self.config_data, user_config)
+            return
+
+        default_models = self.config_data.get("models", {})
+        filtered_models = self._build_filtered_models(
+            user_config, default_models
+        )
+
+        # Merge everything except models, then set models explicitly
+        user_config_without_models = {
+            k: v for k, v in user_config.items() if k != "models"
+        }
+        self.config_data = self._deep_merge(
+            self.config_data, user_config_without_models
+        )
+        self.config_data["models"] = filtered_models
+
+    def _load_config_file(self) -> bool:
+        """Load and parse the YAML config file."""
+        if not self._validate_config_path():
+            return False
+
+        user_config = self._parse_yaml_file()
+        if user_config is None:
+            return False
 
         # Load defaults first
         self.config_data = self._load_defaults()
@@ -178,51 +317,7 @@ class Config:
 
         # Merge user config on top of defaults
         if user_config:
-            # Special handling for models section - only use models specified in user config
-            if "models" in user_config:
-                user_model_keys = list(user_config["models"].keys())
-                default_models = self.config_data.get("models", {})
-
-                logger.debug(f"User specified models: {user_model_keys}")
-                logger.debug(
-                    f"Available default models: {list(default_models.keys())}"
-                )
-
-                # Build models dict with only user-specified models
-                filtered_models = {}
-                for model_key in user_model_keys:
-                    # Start with defaults for this model (if exists)
-                    base_model = default_models.get(model_key, {})
-                    if not base_model:
-                        logger.warning(
-                            f"Model '{model_key}' not found in defaults. "
-                            f"You must provide full configuration (provider, model_name, etc.)"
-                        )
-                    # Merge with user overrides (handle None/empty dict)
-                    user_model = user_config["models"][model_key] or {}
-                    if base_model or user_model:
-                        filtered_models[model_key] = self._deep_merge(
-                            base_model, user_model
-                        )
-
-                logger.info(
-                    f"Loaded {len(filtered_models)} models: {list(filtered_models.keys())}"
-                )
-
-                # Merge everything except models, then set models explicitly
-                user_config_without_models = {
-                    k: v for k, v in user_config.items() if k != "models"
-                }
-                self.config_data = self._deep_merge(
-                    self.config_data, user_config_without_models
-                )
-                self.config_data["models"] = filtered_models
-            else:
-                # No models in user config - use all defaults
-                self.config_data = self._deep_merge(
-                    self.config_data, user_config
-                )
-
+            self._merge_with_models_handling(user_config)
             logger.debug(
                 f"Merged user config, final sections: {list(self.config_data.keys())}"
             )
@@ -282,7 +377,7 @@ class Config:
             )
         if "compression_model" not in model_config:
             model_config["compression_model"] = features.get(
-                "compression_model", "ollama/qwen:1.8b"
+                "compression_model", DEFAULT_COMPRESSION_MODEL
             )
 
         result: dict[str, Any] = model_config

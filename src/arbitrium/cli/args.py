@@ -27,7 +27,7 @@ def parse_arguments() -> dict[str, Any]:
     parser.add_argument(
         "-c",
         "--config",
-        help="Path to config file (CLI default: config.example.yml)",
+        help=f"Path to config file (CLI default: {DEFAULT_CONFIG_FILE})",
         default=DEFAULT_CONFIG_FILE,
     )
     parser.add_argument("-q", "--question", help="Path to question file")

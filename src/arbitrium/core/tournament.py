@@ -214,7 +214,7 @@ class TournamentRunner:
             (
                 eliminated_model,
                 _leader_model,
-            ) = await self.comp.determine_lowest_and_highest_ranked_models()
+            ) = self.comp.determine_lowest_and_highest_ranked_models()
             if not eliminated_model:
                 self.logger.warning(
                     "Could not determine model to eliminate. Ending tournament."
@@ -420,6 +420,10 @@ class ModelComparison:
         self.all_evaluations: dict[str, str] = {}
         self.feedback_history: list[dict[str, Any]] = []
         self.criticism_history: list[dict[str, Any]] = []
+
+        # Elimination tracking attributes (set during determine_lowest_and_highest_ranked_models)
+        self.elimination_reason: str = ""
+        self.elimination_score: float | None = None
 
         deterministic_mode = self.features.get("deterministic_mode", False)
         if deterministic_mode:
@@ -992,14 +996,14 @@ class ModelComparison:
                 f"Using dedicated judge model for evaluation: {self.judge_model_key}"
             )
             return await self._run_judge_evaluation(
-                self.judge_model_key, initial_question, responses, round_num
+                self.judge_model_key, initial_question, responses
             )
         else:
             self.logger.info(
                 "Using cross-evaluation (peer review). All models will evaluate each other."
             )
             result = await self._run_peer_evaluation(
-                initial_question, responses, round_num
+                initial_question, responses
             )
 
             has_valid_scores = False
@@ -1010,9 +1014,7 @@ class ModelComparison:
                     next(iter(self.evaluation_scores.values()), None), dict
                 )
             ):
-                has_valid_scores = any(
-                    scores for scores in self.evaluation_scores.values()
-                )
+                has_valid_scores = any(self.evaluation_scores.values())
 
             if not has_valid_scores:
                 self.logger.warning(
@@ -1026,7 +1028,7 @@ class ModelComparison:
                         f"🏛️  EMERGENCY JUDGE MODE: Using {self.models[emergency_judge].display_name}"
                     )
                     result = await self._run_judge_evaluation(
-                        emergency_judge, initial_question, responses, round_num
+                        emergency_judge, initial_question, responses
                     )
                 else:
                     self.logger.error(
@@ -1040,7 +1042,6 @@ class ModelComparison:
         judge_model_key: str,
         initial_question: str,
         collaborative_responses: dict[str, str],
-        round_num: int,
     ) -> dict[str, str]:
         """Runs the evaluation using a single, designated judge model."""
         judge_display_name = self.models[judge_model_key].display_name
@@ -1062,10 +1063,8 @@ class ModelComparison:
         )
 
         code_names = list(shuffled_responses.keys())
-        evaluation_template = self.prompts.get("evaluate", "")
         prompt = self.prompt_builder.build_evaluation_prompt(
             initial_question,
-            evaluation_template,
             formatted_responses,
             code_names,
         )
@@ -1133,7 +1132,6 @@ class ModelComparison:
         self,
         initial_question: str,
         collaborative_responses: dict[str, str],
-        round_num: int,
     ) -> dict[str, str]:
         """Runs the cross-evaluation phase where each model evaluates all other models."""
         self.prompts.get("evaluate", "")
@@ -1180,10 +1178,8 @@ class ModelComparison:
                 f"Formatted responses length: {len(formatted_responses)}, "
                 f"Models to evaluate: {code_names_to_evaluate}"
             )
-            evaluation_template = self.prompts.get("evaluate", "")
             prompt = self.prompt_builder.build_evaluation_prompt(
                 initial_question,
-                evaluation_template,
                 formatted_responses,
                 code_names_to_evaluate,
             )
@@ -1264,257 +1260,305 @@ class ModelComparison:
         # Score is already in valid range
         return score
 
+    def _split_valid_invalid_evaluators(
+        self,
+    ) -> tuple[list[str], list[str]]:
+        """Split evaluators into valid and invalid lists."""
+        valid_evaluators = [
+            evaluator
+            for evaluator, evaluations in self.evaluation_scores.items()
+            if evaluations
+        ]
+        invalid_evaluators = [
+            evaluator
+            for evaluator, evaluations in self.evaluation_scores.items()
+            if not evaluations
+        ]
+        return valid_evaluators, invalid_evaluators
+
+    def _collect_scores_for_model(
+        self,
+        model_display_name: str,
+        valid_evaluators: list[str],
+    ) -> list[float]:
+        """Collect and normalize scores for a single model from all evaluators."""
+        scores: list[float] = []
+        self.logger.info(f"Collecting scores for {model_display_name}:")
+
+        for evaluator in valid_evaluators:
+            evaluations = self.evaluation_scores[evaluator]
+            if (
+                isinstance(evaluations, dict)
+                and model_display_name in evaluations
+            ):
+                score_val = evaluations[model_display_name]
+                if isinstance(score_val, (int, float)):
+                    normalized_score = self._normalize_score(
+                        float(score_val), evaluator
+                    )
+                    if normalized_score is not None:
+                        scores.append(normalized_score)
+                        self.logger.info(
+                            f"  - {evaluator} gave {model_display_name} a score of {score_val} (normalized to {normalized_score:.2f})"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"  - {evaluator} gave {model_display_name} an invalid score of {score_val} (rejected)"
+                        )
+
+        return scores
+
+    def _finalize_model_score(
+        self,
+        model_display_name: str,
+        scores: list[float],
+    ) -> float:
+        """Calculate final score (median or penalty) for a model."""
+        if scores:
+            median = statistics.median(scores)
+            self.logger.info(
+                f"  → Median score for {model_display_name}: {median:.2f} (from {len(scores)} valid evaluations)"
+            )
+            self._display_model_score(
+                model_display_name, median, "Median score"
+            )
+            return median
+        else:
+            self.logger.warning(
+                f"No valid scores found for {model_display_name}. Assigning a penalty score of 0.0."
+            )
+            return 0.0
+
+    def _aggregate_peer_review_scores(self) -> dict[str, float]:
+        """Aggregate scores from peer review format."""
+        self.logger.info("Aggregating scores from peer-review format.")
+        aggregated_scores: dict[str, float] = {}
+
+        valid_evaluators, invalid_evaluators = (
+            self._split_valid_invalid_evaluators()
+        )
+
+        if invalid_evaluators:
+            self.logger.warning(
+                f"⚠️  {len(invalid_evaluators)} evaluator(s) provided invalid evaluations and were excluded: {', '.join(invalid_evaluators)}"
+            )
+
+        for model_display_name in [
+            self.anon_mapping[k] for k in self.active_model_keys
+        ]:
+            scores = self._collect_scores_for_model(
+                model_display_name, valid_evaluators
+            )
+            aggregated_scores[model_display_name] = self._finalize_model_score(
+                model_display_name, scores
+            )
+
+        return aggregated_scores
+
+    def _aggregate_judge_scores(self) -> dict[str, float]:
+        """Aggregate scores from single judge format."""
+        self.logger.info("Processing scores from single-judge format.")
+        result_scores: dict[str, float] = {}
+        evaluator_name = next(iter(self.all_evaluations.keys()), "judge")
+
+        for model_name, score in self.evaluation_scores.items():
+            if isinstance(score, (int, float)):
+                score_float = float(score)
+                normalized_score = self._normalize_score(
+                    score_float, evaluator_name
+                )
+                if normalized_score is not None:
+                    self._display_model_score(
+                        model_name, normalized_score, "Judge score"
+                    )
+                    result_scores[model_name] = normalized_score
+                else:
+                    self.logger.warning(
+                        f"Judge gave {model_name} an invalid score of {score_float} (rejected)"
+                    )
+
+        return result_scores
+
     def _get_aggregated_scores(self) -> dict[str, float]:
         """Aggregates evaluation scores from peer review or single judge."""
         first_score_value = next(iter(self.evaluation_scores.values()))
         is_peer_review = isinstance(first_score_value, dict)
 
         if is_peer_review:
-            self.logger.info("Aggregating scores from peer-review format.")
-            aggregated_scores: dict[str, float] = {}
-            valid_evaluators = [
-                evaluator
-                for evaluator, evaluations in self.evaluation_scores.items()
-                if evaluations
-            ]
-            invalid_evaluators = [
-                evaluator
-                for evaluator, evaluations in self.evaluation_scores.items()
-                if not evaluations
-            ]
-
-            if invalid_evaluators:
-                self.logger.warning(
-                    f"⚠️  {len(invalid_evaluators)} evaluator(s) provided invalid evaluations and were excluded: {', '.join(invalid_evaluators)}"
-                )
-
-            for model_display_name in [
-                self.anon_mapping[k] for k in self.active_model_keys
-            ]:
-                scores: list[float] = []
-                self.logger.info(
-                    f"Collecting scores for {model_display_name}:"
-                )
-                for evaluator in valid_evaluators:
-                    evaluations = self.evaluation_scores[evaluator]
-                    if (
-                        isinstance(evaluations, dict)
-                        and model_display_name in evaluations
-                    ):
-                        score_val = evaluations[model_display_name]
-                        if isinstance(score_val, (int, float)):
-                            normalized_score = self._normalize_score(
-                                float(score_val), evaluator
-                            )
-                            if (
-                                normalized_score is not None
-                            ):  # Only use valid scores
-                                scores.append(normalized_score)
-                                self.logger.info(
-                                    f"  - {evaluator} gave {model_display_name} a score of {score_val} (normalized to {normalized_score:.2f})"
-                                )
-                            else:
-                                self.logger.warning(
-                                    f"  - {evaluator} gave {model_display_name} an invalid score of {score_val} (rejected)"
-                                )
-
-                if scores:
-                    median = statistics.median(scores)
-                    aggregated_scores[model_display_name] = median
-                    self.logger.info(
-                        f"  → Median score for {model_display_name}: {median:.2f} (from {len(scores)} valid evaluations)"
-                    )
-                    self._display_model_score(
-                        model_display_name,
-                        aggregated_scores[model_display_name],
-                        "Median score",
-                    )
-                else:
-                    self.logger.warning(
-                        f"No valid scores found for {model_display_name}. Assigning a penalty score of 0.0."
-                    )
-                    aggregated_scores[model_display_name] = 0.0
-            return aggregated_scores
+            return self._aggregate_peer_review_scores()
         else:
-            self.logger.info("Processing scores from single-judge format.")
-            result_scores: dict[str, float] = {}
-            evaluator_name = next(iter(self.all_evaluations.keys()), "judge")
-            for model_name, score in self.evaluation_scores.items():
-                if isinstance(score, (int, float)):
-                    score_float = float(score)
-                    normalized_score = self._normalize_score(
-                        score_float, evaluator_name
-                    )
-                    if normalized_score is not None:  # Only use valid scores
-                        self._display_model_score(
-                            model_name, normalized_score, "Judge score"
-                        )
-                        result_scores[model_name] = normalized_score
-                    else:
-                        self.logger.warning(
-                            f"Judge gave {model_name} an invalid score of {score_float} (rejected)"
-                        )
-            return result_scores
+            return self._aggregate_judge_scores()
 
-    async def determine_lowest_and_highest_ranked_models(
-        self,
-    ) -> tuple[str, str]:
-        """Aggregates evaluation scores to determine the lowest and highest performing models.
-
-        Also sets self.elimination_reason to track if elimination was random or score-based.
-        """
-        if (
-            not hasattr(self, "evaluation_scores")
-            or not self.evaluation_scores
-        ):
-            self.logger.error(
-                "No evaluation scores available for elimination decision. Falling back to random selection."
-            )
-            active_names = [
-                self.anon_mapping[k] for k in self.active_model_keys
-            ]
-            chosen = self.anonymizer.rng.choice(active_names)
-            self.elimination_reason = (
-                "Random selection (no evaluation scores available)"
-            )
-            self.elimination_score = None
-            return chosen, self.anonymizer.rng.choice(active_names)
-
-        self.logger.info(
-            "Aggregating Evaluation Scores",
-            extra={"display_type": "section_header"},
+    def _handle_no_evaluation_scores(self) -> tuple[str, str]:
+        """Handle case where no evaluation scores are available."""
+        self.logger.error(
+            "No evaluation scores available for elimination decision. Falling back to random selection."
         )
-        aggregated_scores = self._get_aggregated_scores()
+        active_names = [self.anon_mapping[k] for k in self.active_model_keys]
+        chosen = self.anonymizer.rng.choice(active_names)
+        self.elimination_reason = (
+            "Random selection (no evaluation scores available)"
+        )
+        self.elimination_score = None
+        return chosen, self.anonymizer.rng.choice(active_names)
 
-        all_active_models = {
-            self.anon_mapping[k] for k in self.active_model_keys
-        }
+    def _select_leader_from_scored_models(
+        self, active_scores: dict[str, float]
+    ) -> str:
+        """Select the highest-ranked model from scored models."""
+        max_score = max(active_scores.values())
+        models_with_max = [
+            name for name, score in active_scores.items() if score == max_score
+        ]
+        return self.anonymizer.rng.choice(models_with_max)
 
-        # active_scores only contains models that received at least one valid score
-        active_scores = {
-            k: v
-            for k, v in aggregated_scores.items()
-            if k in all_active_models and v is not None
-        }
+    def _handle_unscored_models(
+        self,
+        unscored_models: set[str],
+        active_scores: dict[str, float],
+        all_active_models: set[str],
+    ) -> tuple[str, str]:
+        """Handle case where some models were not scored."""
+        lowest_model_name = self.anonymizer.rng.choice(list(unscored_models))
+        self.logger.warning(
+            f"Models {list(unscored_models)} were not scored by any evaluator. "
+            f"Randomly selecting {lowest_model_name} for elimination."
+        )
+        self.elimination_reason = (
+            "Random selection (model was not scored by any evaluator)"
+        )
+        self.elimination_score = None
 
-        unscored_models = all_active_models - set(active_scores.keys())
-
-        if unscored_models:
-            lowest_model_name = self.anonymizer.rng.choice(
-                list(unscored_models)
+        if not active_scores:
+            # All models were unscored
+            remaining_models = list(all_active_models - {lowest_model_name})
+            highest_model_name = (
+                self.anonymizer.rng.choice(remaining_models)
+                if remaining_models
+                else lowest_model_name
             )
             self.logger.warning(
-                f"Models {list(unscored_models)} were not scored by any evaluator. "
-                f"Randomly selecting {lowest_model_name} for elimination."
+                "No models received scores. Randomly selecting leader."
             )
-            self.elimination_reason = (
-                "Random selection (model was not scored by any evaluator)"
+        else:
+            # At least one model was scored
+            highest_model_name = self._select_leader_from_scored_models(
+                active_scores
             )
-            self.elimination_score = None
 
-            if not active_scores:
-                # All models were unscored, so pick a random leader from the rest
-                remaining_models = list(
-                    all_active_models - {lowest_model_name}
-                )
-                highest_model_name = (
-                    self.anonymizer.rng.choice(remaining_models)
-                    if remaining_models
-                    else lowest_model_name
-                )
-                self.logger.warning(
-                    "No models received scores. Randomly selecting leader."
-                )
-            else:
-                # At least one model was scored, so find the best among them
-                max_score = max(active_scores.values())
-                models_with_max = [
-                    name
-                    for name, score in active_scores.items()
-                    if score == max_score
-                ]
-                highest_model_name = self.anonymizer.rng.choice(
-                    models_with_max
-                )
+        return lowest_model_name, highest_model_name
 
-        elif not active_scores:
-            self.logger.error(
-                "CRITICAL: No models have scores and no unscored models found. Cannot determine ranking."
-            )
-            # Fallback to random choice among all active models
-            active_names = list(all_active_models)
-            chosen = self.anonymizer.rng.choice(active_names)
-            self.elimination_reason = (
-                "Random selection (critical error - no valid scores)"
-            )
-            self.elimination_score = None
-            return chosen, self.anonymizer.rng.choice(active_names)
+    def _handle_critical_no_scores(
+        self, all_active_models: set[str]
+    ) -> tuple[str, str]:
+        """Handle critical error case where no models have scores."""
+        self.logger.error(
+            "CRITICAL: No models have scores and no unscored models found. Cannot determine ranking."
+        )
+        active_names = list(all_active_models)
+        chosen = self.anonymizer.rng.choice(active_names)
+        self.elimination_reason = (
+            "Random selection (critical error - no valid scores)"
+        )
+        self.elimination_score = None
+        return chosen, self.anonymizer.rng.choice(active_names)
 
-        else:  # All models were scored
+    def _select_lowest_ranked_model(
+        self, active_scores: dict[str, float]
+    ) -> tuple[str, float]:
+        """Select the lowest-ranked model from scores."""
+        min_score = min(active_scores.values())
+        models_with_min = [
+            name for name, score in active_scores.items() if score == min_score
+        ]
+
+        if len(models_with_min) > 1:
+            lowest_model_name = self.anonymizer.rng.choice(models_with_min)
+            self.logger.warning(
+                f"Tie for lowest score ({min_score:.2f}): {models_with_min}. "
+                f"Randomly selected {lowest_model_name} for elimination."
+            )
+            self.elimination_reason = f"Random selection among tied models (tied at score {min_score:.2f})"
+        else:
+            lowest_model_name = models_with_min[0]
+            self.elimination_reason = "Lowest score in evaluation"
+
+        self.elimination_score = min_score
+        return lowest_model_name, min_score
+
+    def _select_highest_ranked_model(
+        self, active_scores: dict[str, float]
+    ) -> str:
+        """Select the highest-ranked model from scores."""
+        max_score = max(active_scores.values())
+        models_with_max = [
+            name for name, score in active_scores.items() if score == max_score
+        ]
+
+        if len(models_with_max) > 1:
+            highest_model_name = self.anonymizer.rng.choice(models_with_max)
             self.logger.info(
-                "All models received scores. Determining winner and loser based on scores."
+                f"Tie for highest score ({max_score:.2f}): {models_with_max}. Randomly selected {highest_model_name} as leader."
             )
-            min_score = min(active_scores.values())
-            max_score = max(active_scores.values())
+        else:
+            highest_model_name = models_with_max[0]
 
-            models_with_min = [
+        return highest_model_name
+
+    def _resolve_same_model_tie(
+        self,
+        lowest_model_name: str,
+        highest_model_name: str,
+        active_scores: dict[str, float],
+        min_score: float,
+    ) -> str:
+        """Resolve case where lowest and highest are the same model."""
+        if lowest_model_name == highest_model_name and len(active_scores) > 1:
+            self.logger.warning(
+                f"All models tied with score {min_score:.2f}. Randomly selecting for elimination and leadership."
+            )
+            other_models = [
                 name
-                for name, score in active_scores.items()
-                if score == min_score
+                for name in active_scores.keys()
+                if name != lowest_model_name
             ]
-            models_with_max = [
-                name
-                for name, score in active_scores.items()
-                if score == max_score
-            ]
+            if other_models:
+                highest_model_name = self.anonymizer.rng.choice(other_models)
+            self.logger.info(
+                f"Randomly selecting {lowest_model_name} to be eliminated and {highest_model_name} to lead."
+            )
+            self.elimination_reason = (
+                f"Random selection (all models tied at {min_score:.2f})"
+            )
+            self.elimination_score = min_score
 
-            if len(models_with_min) > 1:
-                lowest_model_name = self.anonymizer.rng.choice(models_with_min)
-                self.logger.warning(
-                    f"Tie for lowest score ({min_score:.2f}): {models_with_min}. "
-                    f"Randomly selected {lowest_model_name} for elimination."
-                )
-                self.elimination_reason = f"Random selection among tied models (tied at score {min_score:.2f})"
-                self.elimination_score = min_score
-            else:
-                lowest_model_name = models_with_min[0]
-                self.elimination_reason = "Lowest score in evaluation"
-                self.elimination_score = min_score
+        return highest_model_name
 
-            if len(models_with_max) > 1:
-                highest_model_name = self.anonymizer.rng.choice(
-                    models_with_max
-                )
-                self.logger.info(
-                    f"Tie for highest score ({max_score:.2f}): {models_with_max}. Randomly selected {highest_model_name} as leader."
-                )
-            else:
-                highest_model_name = models_with_max[0]
+    def _handle_all_models_scored(
+        self, active_scores: dict[str, float]
+    ) -> tuple[str, str]:
+        """Handle case where all models received scores."""
+        self.logger.info(
+            "All models received scores. Determining winner and loser based on scores."
+        )
 
-            if (
-                lowest_model_name == highest_model_name
-                and len(active_scores) > 1
-            ):
-                self.logger.warning(
-                    f"All models tied with score {min_score:.2f}. Randomly selecting for elimination and leadership."
-                )
-                other_models = [
-                    name
-                    for name in active_scores.keys()
-                    if name != lowest_model_name
-                ]
-                if other_models:
-                    highest_model_name = self.anonymizer.rng.choice(
-                        other_models
-                    )
-                self.logger.info(
-                    f"Randomly selecting {lowest_model_name} to be eliminated and {highest_model_name} to lead."
-                )
-                self.elimination_reason = (
-                    f"Random selection (all models tied at {min_score:.2f})"
-                )
-                self.elimination_score = min_score
+        lowest_model_name, min_score = self._select_lowest_ranked_model(
+            active_scores
+        )
+        highest_model_name = self._select_highest_ranked_model(active_scores)
+        highest_model_name = self._resolve_same_model_tie(
+            lowest_model_name, highest_model_name, active_scores, min_score
+        )
 
+        return lowest_model_name, highest_model_name
+
+    def _finalize_ranking_results(
+        self,
+        lowest_model_name: str,
+        highest_model_name: str,
+        active_scores: dict[str, float],
+    ) -> tuple[str, str]:
+        """Set leader key and log final ranking results."""
         self.current_leader_key = next(
             (
                 key
@@ -1525,9 +1569,7 @@ class ModelComparison:
         )
 
         highest_score_val = active_scores.get(highest_model_name, float("nan"))
-        lowest_score_val = active_scores.get(
-            lowest_model_name, 0.0
-        )  # Unscored models have a de-facto 0.0
+        lowest_score_val = active_scores.get(lowest_model_name, 0.0)
 
         self.logger.info(
             f"\n🏆 Highest-ranked model: {highest_model_name} with score {highest_score_val:.2f}/10",
@@ -1539,6 +1581,46 @@ class ModelComparison:
         )
 
         return lowest_model_name, highest_model_name
+
+    def determine_lowest_and_highest_ranked_models(
+        self,
+    ) -> tuple[str, str]:
+        """Aggregates evaluation scores to determine the lowest and highest performing models.
+
+        Also sets self.elimination_reason to track if elimination was random or score-based.
+        """
+        if (
+            not hasattr(self, "evaluation_scores")
+            or not self.evaluation_scores
+        ):
+            return self._handle_no_evaluation_scores()
+
+        self.logger.info(
+            "Aggregating Evaluation Scores",
+            extra={"display_type": "section_header"},
+        )
+        aggregated_scores = self._get_aggregated_scores()
+
+        all_active_models = {
+            self.anon_mapping[k] for k in self.active_model_keys
+        }
+        active_scores = {
+            k: v
+            for k, v in aggregated_scores.items()
+            if k in all_active_models and v is not None
+        }
+        unscored_models = all_active_models - set(active_scores.keys())
+
+        if unscored_models:
+            lowest, highest = self._handle_unscored_models(
+                unscored_models, active_scores, all_active_models
+            )
+        elif not active_scores:
+            return self._handle_critical_no_scores(all_active_models)
+        else:
+            lowest, highest = self._handle_all_models_scored(active_scores)
+
+        return self._finalize_ranking_results(lowest, highest, active_scores)
 
     def _get_phase_2_criticisms(self) -> Any | None:
         """Extract Phase 2 criticisms from history."""

@@ -108,14 +108,8 @@ class EnhancedKnowledgeBank:
 
         text_stripped = response_text.strip()
 
-        # Check minimum length (too short to contain meaningful insights)
-        if len(text_stripped) < 50:
-            return (
-                False,
-                f"Response too short ({len(text_stripped)} chars, minimum 50)",
-            )
-
-        # Check if response is a technical error message
+        # Check if response is a technical error message FIRST
+        # This should be checked before length validation
         text_lower = text_stripped.lower()
         error_prefixes = ["error:", "failed:", "timeout:", "exception:"]
         for prefix in error_prefixes:
@@ -124,6 +118,13 @@ class EnhancedKnowledgeBank:
                     False,
                     f"Response is an error message (starts with '{prefix}')",
                 )
+
+        # Check minimum length (too short to contain meaningful insights)
+        if len(text_stripped) < 50:
+            return (
+                False,
+                f"Response too short ({len(text_stripped)} chars, minimum 50)",
+            )
 
         # Check if response is apology/refusal using shared utility
         # This is a safety net - prompts should prevent this
@@ -138,6 +139,77 @@ class EnhancedKnowledgeBank:
             return False, f"Response is a placeholder ('{text_stripped}')"
 
         return True, ""
+
+    def _should_skip_line(self, line_stripped: str) -> bool:
+        """Check if a line should be skipped during parsing."""
+        if not line_stripped:
+            return True
+        # Skip lines that look like headers/titles (too short or all caps)
+        if len(line_stripped) < 15 or (
+            line_stripped.isupper() and len(line_stripped) < 50
+        ):
+            return True
+        return False
+
+    def _is_bullet_or_numbered_list(self, line_stripped: str) -> bool:
+        """Check if line starts with bullet point or number."""
+        if line_stripped.startswith(("-", "•", "*")):
+            return True
+        if (
+            len(line_stripped) > 2
+            and line_stripped[0].isdigit()
+            and line_stripped[1] in ".)"
+        ):
+            return True
+        return False
+
+    def _extract_bullet_insight(self, line_stripped: str) -> str:
+        """Extract insight from bullet point line."""
+        return line_stripped[1:].strip()
+
+    def _extract_numbered_insight(self, line_stripped: str) -> str:
+        """Extract insight from numbered list line."""
+        # For numbered lists like "1. " or "1) "
+        # Find the first dot or closing paren
+        idx = min(
+            (
+                line_stripped.find(".")
+                if "." in line_stripped
+                else len(line_stripped)
+            ),
+            (
+                line_stripped.find(")")
+                if ")" in line_stripped
+                else len(line_stripped)
+            ),
+        )
+        return line_stripped[idx + 1 :].strip()
+
+    def _extract_plain_text_insight(self, line_stripped: str) -> str | None:
+        """Extract insight from plain text line."""
+        # Accept plain text lines that look like complete statements
+        if len(line_stripped) > 30:
+            return line_stripped
+        return None
+
+    def _extract_insight_from_line(self, line_stripped: str) -> str | None:
+        """Extract insight from a single line."""
+        if self._should_skip_line(line_stripped):
+            return None
+
+        insight: str | None
+        if self._is_bullet_or_numbered_list(line_stripped):
+            if line_stripped.startswith(("-", "•", "*")):
+                insight = self._extract_bullet_insight(line_stripped)
+            else:
+                insight = self._extract_numbered_insight(line_stripped)
+        else:
+            insight = self._extract_plain_text_insight(line_stripped)
+
+        # Only return insights with reasonable content
+        if insight and len(insight) > 10:
+            return insight
+        return None
 
     def _parse_claims_from_response(
         self, response_content: str, extractor_model_key: str
@@ -156,62 +228,13 @@ class EnhancedKnowledgeBank:
             )
             return []
 
-        # Parse insights line by line (accept both formatted lists and plain text lines)
+        # Parse insights line by line
         claims = []
         lines = response_content.strip().split("\n")
 
         for line in lines:
-            line_stripped = line.strip()
-            # Skip empty lines
-            if not line_stripped:
-                continue
-
-            # Skip lines that look like headers/titles (too short or all caps)
-            if len(line_stripped) < 15 or (
-                line_stripped.isupper() and len(line_stripped) < 50
-            ):
-                continue
-
-            insight = None
-
-            # Check if line starts with a bullet point (-, •, *) or number (1., 2., etc.)
-            if (
-                line_stripped.startswith("-")
-                or line_stripped.startswith("•")
-                or line_stripped.startswith("*")
-                or (
-                    len(line_stripped) > 2
-                    and line_stripped[0].isdigit()
-                    and line_stripped[1] in ".)"
-                )
-            ):
-                # Extract the insight text (remove the bullet/number prefix)
-                if line_stripped.startswith(("-", "•", "*")):
-                    insight = line_stripped[1:].strip()
-                else:
-                    # For numbered lists like "1. " or "1) "
-                    # Find the first space or closing paren
-                    idx = min(
-                        (
-                            line_stripped.find(".")
-                            if "." in line_stripped
-                            else len(line_stripped)
-                        ),
-                        (
-                            line_stripped.find(")")
-                            if ")" in line_stripped
-                            else len(line_stripped)
-                        ),
-                    )
-                    insight = line_stripped[idx + 1 :].strip()
-            else:
-                # Accept plain text lines that look like complete statements
-                # (have reasonable length and end with proper punctuation or don't look like fragments)
-                if len(line_stripped) > 30:
-                    insight = line_stripped
-
-            # Only add non-empty insights with reasonable content
-            if insight and len(insight) > 10:
+            insight = self._extract_insight_from_line(line.strip())
+            if insight:
                 claims.append(insight)
 
         if not claims:
@@ -225,6 +248,16 @@ class EnhancedKnowledgeBank:
         self, eliminated_response: str, model_name: str, round_num: int
     ) -> None:
         """Uses an LLM to extract key claims from the response of an eliminated model and adds them to the bank."""
+        # Check if Knowledge Bank extraction is enabled
+        kb_config = self.comparison.config.get("knowledge_bank", {})
+        kb_enabled = kb_config.get("enabled", True)
+
+        if not kb_enabled:
+            self.logger.debug(
+                f"Knowledge Bank is disabled. Skipping insight extraction for {model_name}."
+            )
+            return
+
         self.logger.info(
             f"Extracting insights from eliminated model {model_name}'s response."
         )

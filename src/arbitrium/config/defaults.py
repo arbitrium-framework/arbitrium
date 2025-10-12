@@ -7,6 +7,9 @@ with YAML files when running from repository vs installed package.
 
 from typing import Any
 
+# Model compression defaults
+DEFAULT_COMPRESSION_MODEL = "ollama/qwen:1.8b"
+
 # Default model definitions
 MODELS: dict[str, dict[str, Any]] = {
     # ============================================================================

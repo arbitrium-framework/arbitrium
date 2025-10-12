@@ -142,6 +142,7 @@ arbitrium_demo_outputs/
 
 # Coverage reports
 coverage.xml
+coverage.json
 .coverage
 htmlcov/
 
