@@ -9,7 +9,7 @@ from tests.integration.conftest import MockModel
 class TestModelFactoryBasics:
     """Test basic model factory functionality."""
 
-    def test_create_models_from_valid_config(self, tmp_output_dir) -> None:
+    def test_create_models_from_valid_config(self, tmp_dir) -> None:
         """Test creating models from valid configuration."""
         config = {
             "models": {
@@ -30,7 +30,7 @@ class TestModelFactoryBasics:
                     "context_window": 8000,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -43,7 +43,7 @@ class TestModelFactoryBasics:
         assert isinstance(models["model_a"], MockModel)
         assert isinstance(models["model_b"], MockModel)
 
-    def test_create_single_model(self, tmp_output_dir) -> None:
+    def test_create_single_model(self, tmp_dir) -> None:
         """Test creating single model from config."""
         config = {
             "models": {
@@ -56,7 +56,7 @@ class TestModelFactoryBasics:
                     "context_window": 2000,
                 }
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -65,7 +65,7 @@ class TestModelFactoryBasics:
         assert "only_model" in models
 
     def test_create_models_with_different_providers(
-        self, tmp_output_dir
+        self, tmp_dir
     ) -> None:
         """Test creating models with different providers."""
         config = {
@@ -87,7 +87,7 @@ class TestModelFactoryBasics:
                     "context_window": 4000,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -103,21 +103,21 @@ class TestModelFactoryBasics:
 class TestModelFactoryEdgeCases:
     """Test edge cases in model factory."""
 
-    def test_empty_models_config(self, tmp_output_dir) -> None:
+    def test_empty_models_config(self, tmp_dir) -> None:
         """Test factory with empty models configuration."""
         config = {
             "models": {},
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
 
         assert len(models) == 0
 
-    def test_missing_models_key(self, tmp_output_dir) -> None:
+    def test_missing_models_key(self, tmp_dir) -> None:
         """Test factory when models key is missing."""
         config = {
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         # Should handle missing 'models' key gracefully
@@ -129,7 +129,7 @@ class TestModelFactoryEdgeCases:
             # Or it might raise KeyError, which is also acceptable
             pass
 
-    def test_invalid_model_config_skipped(self, tmp_output_dir) -> None:
+    def test_invalid_model_config_skipped(self, tmp_dir) -> None:
         """Test that invalid model configs are skipped."""
         config = {
             "models": {
@@ -143,7 +143,7 @@ class TestModelFactoryEdgeCases:
                 },
                 "invalid_model": "not a dict",  # Invalid config
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -154,11 +154,11 @@ class TestModelFactoryEdgeCases:
         # Invalid model should be skipped
         assert "invalid_model" not in models
 
-    def test_models_config_not_dict(self, tmp_output_dir) -> None:
+    def test_models_config_not_dict(self, tmp_dir) -> None:
         """Test when models config is not a dictionary."""
         config = {
             "models": "not a dict",
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -170,7 +170,7 @@ class TestModelFactoryEdgeCases:
 class TestMockModelCreation:
     """Test mock model creation specifically."""
 
-    def test_mock_model_with_all_parameters(self, tmp_output_dir) -> None:
+    def test_mock_model_with_all_parameters(self, tmp_dir) -> None:
         """Test creating mock model with all parameters."""
         config = {
             "models": {
@@ -183,7 +183,7 @@ class TestMockModelCreation:
                     "context_window": 8192,
                 }
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -196,7 +196,7 @@ class TestMockModelCreation:
         assert model.max_tokens == 2048
         assert model.context_window == 8192
 
-    def test_mock_model_with_minimal_parameters(self, tmp_output_dir) -> None:
+    def test_mock_model_with_minimal_parameters(self, tmp_dir) -> None:
         """Test creating mock model with minimal parameters."""
         config = {
             "models": {
@@ -209,7 +209,7 @@ class TestMockModelCreation:
                     "context_window": 4000,
                 }
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -217,7 +217,7 @@ class TestMockModelCreation:
         assert "minimal" in models
         assert isinstance(models["minimal"], MockModel)
 
-    def test_mock_model_defaults(self, tmp_output_dir) -> None:
+    def test_mock_model_defaults(self, tmp_dir) -> None:
         """Test mock model uses defaults for missing parameters."""
         config = {
             "models": {
@@ -230,7 +230,7 @@ class TestMockModelCreation:
                     "context_window": 4000,
                 }
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -243,7 +243,7 @@ class TestMockModelCreation:
 class TestFactoryErrorHandling:
     """Test error handling in model factory."""
 
-    def test_mock_import_error_fallback(self, tmp_output_dir) -> None:
+    def test_mock_import_error_fallback(self, tmp_dir) -> None:
         """Test fallback when MockModel import fails."""
         # This test simulates what happens in non-test environment
         # where MockModel might not be available
@@ -258,7 +258,7 @@ class TestFactoryErrorHandling:
                     "context_window": 4000,
                 }
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         # Should create model (either MockModel or fallback to LiteLLMModel)
@@ -270,7 +270,7 @@ class TestFactoryErrorHandling:
 class TestFactoryWithMultipleModels:
     """Test factory with multiple models."""
 
-    def test_create_three_models(self, tmp_output_dir) -> None:
+    def test_create_three_models(self, tmp_dir) -> None:
         """Test creating three models."""
         config = {
             "models": {
@@ -299,7 +299,7 @@ class TestFactoryWithMultipleModels:
                     "context_window": 8000,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -307,7 +307,7 @@ class TestFactoryWithMultipleModels:
         assert len(models) == 3
         assert all(key in models for key in ["model_1", "model_2", "model_3"])
 
-    def test_create_many_models(self, tmp_output_dir) -> None:
+    def test_create_many_models(self, tmp_dir) -> None:
         """Test creating many models."""
         num_models = 10
         models_config = {
@@ -324,7 +324,7 @@ class TestFactoryWithMultipleModels:
 
         config = {
             "models": models_config,
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -355,7 +355,7 @@ class TestFactoryIntegration:
     @pytest.mark.asyncio
     async def test_factory_creates_correct_number_of_models(
         self,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that factory creates correct number of models."""
         from arbitrium import Arbitrium
@@ -379,7 +379,7 @@ class TestFactoryIntegration:
                     "context_window": 4000,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         arbitrium = await Arbitrium.from_settings(
@@ -394,7 +394,7 @@ class TestFactoryIntegration:
 class TestFactoryConfigVariations:
     """Test factory with various config variations."""
 
-    def test_different_temperatures(self, tmp_output_dir) -> None:
+    def test_different_temperatures(self, tmp_dir) -> None:
         """Test models with different temperature settings."""
         config = {
             "models": {
@@ -415,7 +415,7 @@ class TestFactoryConfigVariations:
                     "context_window": 4000,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)
@@ -423,7 +423,7 @@ class TestFactoryConfigVariations:
         assert models["conservative"].temperature == 0.1
         assert models["creative"].temperature == 1.0
 
-    def test_different_context_windows(self, tmp_output_dir) -> None:
+    def test_different_context_windows(self, tmp_dir) -> None:
         """Test models with different context windows."""
         config = {
             "models": {
@@ -444,7 +444,7 @@ class TestFactoryConfigVariations:
                     "context_window": 128000,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         models = create_models_from_config(config)

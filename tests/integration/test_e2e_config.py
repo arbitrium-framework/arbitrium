@@ -19,11 +19,11 @@ class TestConfigurationLoading:
     async def test_load_config_from_file(
         self,
         basic_config: dict,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test loading configuration from a YAML file."""
         # Create temporary config file
-        config_file = tmp_output_dir / "test_config.yml"
+        config_file = tmp_dir / "test_config.yml"
         with open(config_file, "w") as f:
             yaml.dump(basic_config, f)
 
@@ -59,7 +59,7 @@ class TestConfigurationLoading:
     @pytest.mark.asyncio
     async def test_invalid_config_file_raises_error(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that invalid config file raises ConfigurationError."""
         # Create invalid config file (missing required sections)
@@ -68,7 +68,7 @@ class TestConfigurationLoading:
             # Missing: retry, features, prompts, outputs_dir
         }
 
-        config_file = tmp_output_dir / "invalid_config.yml"
+        config_file = tmp_dir / "invalid_config.yml"
         with open(config_file, "w") as f:
             yaml.dump(invalid_config, f)
 
@@ -160,7 +160,7 @@ class TestConfigurationMerging:
     @pytest.mark.asyncio
     async def test_user_config_overrides_defaults(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that user config values override defaults."""
         user_config = {
@@ -173,7 +173,7 @@ class TestConfigurationMerging:
                     "max_tokens": 1000,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         arbitrium = await Arbitrium.from_settings(
@@ -189,7 +189,7 @@ class TestConfigurationMerging:
     @pytest.mark.asyncio
     async def test_defaults_fill_missing_values(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that defaults fill in missing config values."""
         minimal_config = {
@@ -202,7 +202,7 @@ class TestConfigurationMerging:
                     "temperature": 0.7,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         arbitrium = await Arbitrium.from_settings(
@@ -224,7 +224,7 @@ class TestConfigurationMerging:
     @pytest.mark.asyncio
     async def test_only_specified_models_are_loaded(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that only models mentioned in config are loaded."""
         # Config with specific models
@@ -245,7 +245,7 @@ class TestConfigurationMerging:
                     "temperature": 0.7,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         arbitrium = await Arbitrium.from_settings(
@@ -283,7 +283,7 @@ class TestModelInitialization:
     @pytest.mark.asyncio
     async def test_empty_models_config_creates_no_models(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that empty models config creates no models."""
         empty_config = {
@@ -291,7 +291,7 @@ class TestModelInitialization:
             "retry": {"max_attempts": 3},
             "features": {},
             "prompts": {"initial": "test"},
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         # Should fail validation since models is empty
@@ -304,7 +304,7 @@ class TestModelInitialization:
     @pytest.mark.asyncio
     async def test_model_properties_are_set_correctly(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that model properties are set from config."""
         config = {
@@ -318,7 +318,7 @@ class TestModelInitialization:
                     "context_window": 8000,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         arbitrium = await Arbitrium.from_settings(
@@ -360,7 +360,7 @@ class TestHealthChecks:
     async def test_failed_models_tracked_separately(
         self,
         basic_config: dict,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that failed models are tracked separately."""
         # Create arbitrium without health check first
@@ -442,7 +442,7 @@ class TestSecretsLoading:
     @pytest.mark.asyncio
     async def test_local_providers_skip_secrets(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that local providers skip secret loading."""
         config = {
@@ -455,7 +455,7 @@ class TestSecretsLoading:
                     "temperature": 0.7,
                 },
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         # Should not attempt to load secrets for local providers
@@ -542,11 +542,11 @@ class TestConfigurationEdgeCases:
     @pytest.mark.asyncio
     async def test_malformed_yaml_raises_error(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that malformed YAML raises appropriate error."""
         # Create malformed YAML file
-        config_file = tmp_output_dir / "malformed.yml"
+        config_file = tmp_dir / "malformed.yml"
         with open(config_file, "w") as f:
             f.write("models:\n  test: {invalid yaml syntax")
 
@@ -560,7 +560,7 @@ class TestConfigurationEdgeCases:
     @pytest.mark.asyncio
     async def test_missing_model_required_fields(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that models with missing required fields fail validation."""
         config = {
@@ -573,7 +573,7 @@ class TestConfigurationEdgeCases:
             "retry": {"max_attempts": 3},
             "features": {},
             "prompts": {"initial": "test"},
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         # Should fail validation
@@ -585,7 +585,7 @@ class TestConfigurationEdgeCases:
     @pytest.mark.asyncio
     async def test_config_deep_merge_preserves_nested_values(
         self,
-        tmp_output_dir: Path,
+        tmp_dir: Path,
     ) -> None:
         """Test that deep merge preserves nested configuration values."""
         config = {
@@ -603,7 +603,7 @@ class TestConfigurationEdgeCases:
                 "initial_delay": 10,  # Override default
                 # max_delay should come from defaults
             },
-            "outputs_dir": str(tmp_output_dir),
+            "outputs_dir": str(tmp_dir),
         }
 
         arbitrium = await Arbitrium.from_settings(

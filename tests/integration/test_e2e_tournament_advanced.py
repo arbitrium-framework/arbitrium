@@ -14,7 +14,7 @@ class TestTournamentPhaseTransitions:
     async def test_tournament_with_improvement_disabled(
         self,
         minimal_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test tournament with improvement phase disabled."""
         # Disable improvement phase
@@ -41,7 +41,7 @@ class TestTournamentPhaseTransitions:
     async def test_tournament_with_refinement_disabled(
         self,
         minimal_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test tournament with refinement phase disabled."""
         # Disable refinement phase
@@ -69,7 +69,7 @@ class TestTournamentPhaseTransitions:
     async def test_tournament_with_all_phases_disabled(
         self,
         minimal_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test tournament with all optional phases disabled."""
         minimal_config["improvement_phase"]["enabled"] = False
@@ -97,7 +97,7 @@ class TestTournamentPhaseTransitions:
     async def test_tournament_with_feedback_enabled(
         self,
         basic_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test tournament with feedback enabled."""
         basic_config["improvement_phase"]["feedback_enabled"] = True
@@ -477,7 +477,7 @@ class TestProvenance:
     async def test_provenance_tracking_enabled(
         self,
         basic_config: dict,
-        tmp_output_dir,
+        tmp_dir,
     ) -> None:
         """Test that provenance is tracked when enabled."""
         basic_config["features"]["save_reports_to_disk"] = True
@@ -497,10 +497,10 @@ class TestProvenance:
         await arbitrium.run_tournament("Test question?")
 
         # Check that provenance file was created
-        list(tmp_output_dir.glob("*provenance*"))
+        list(tmp_dir.glob("*provenance*"))
         # May or may not have provenance depending on implementation
         # Just verify tournament completed
-        assert tmp_output_dir.exists()
+        assert tmp_dir.exists()
 
 
 class TestMultiRoundTournaments:

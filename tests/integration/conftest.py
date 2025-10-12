@@ -1,7 +1,6 @@
 """Integration test fixtures and utilities."""
 
-import tempfile
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +19,10 @@ class MockModel(BaseModel):
         model_name: str = "test-model",
         display_name: str = "Test Model",
         provider: str = "mock",
-        response_text: str = "This is a comprehensive mock response with sufficient detail for knowledge bank validation",
+        response_text: str = (
+            "This is a comprehensive mock response with sufficient detail "
+            "for knowledge bank validation"
+        ),
         should_fail: bool = False,
         delay: float = 0.0,
         temperature: float = 0.7,
@@ -62,9 +64,13 @@ class MockModel(BaseModel):
 
         # Vary responses based on call count for more realistic testing
         if "evaluate" in prompt.lower() or "score" in prompt.lower():
-            # If response_text was explicitly set to something different from default,
-            # and it looks like apology/refusal, use it instead of auto-generating scores
-            default_response = "This is a comprehensive mock response with sufficient detail for knowledge bank validation"
+            # If response_text was explicitly set to something different
+            # from default, and it looks like apology/refusal,
+            # use it instead of auto-generating scores
+            default_response = (
+                "This is a comprehensive mock response with sufficient "
+                "detail for knowledge bank validation"
+            )
             if self._response_text != default_response and any(
                 keyword in self._response_text.lower()
                 for keyword in [
@@ -107,11 +113,14 @@ class MockModel(BaseModel):
         elif "feedback" in prompt.lower():
             response = "Feedback: This answer could be improved by adding more detail."
         elif "extract" in prompt.lower() or "insight" in prompt.lower():
-            # Provide longer insights to pass the 50-character minimum validation
+            # Provide longer insights to pass 50-character minimum
             response = (
-                "- The primary consideration here is the long-term sustainability of the approach\n"
-                "- Historical precedent suggests this strategy has proven effective in similar contexts\n"
-                "- Cost-benefit analysis indicates significant potential for optimization"
+                "- The primary consideration here is the long-term "
+                "sustainability of the approach\n"
+                "- Historical precedent suggests this strategy has "
+                "proven effective in similar contexts\n"
+                "- Cost-benefit analysis indicates significant "
+                "potential for optimization"
             )
         else:
             # Only add call tracking suffix if response_text is non-empty
@@ -127,110 +136,31 @@ class MockModel(BaseModel):
         )
 
 
-@pytest.fixture()
-def tmp_output_dir() -> Generator[Path, None, None]:
-    """Create temporary output directory."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir)
-
-
-@pytest.fixture()
-def basic_config(tmp_output_dir: Path) -> dict[str, Any]:
-    """Basic configuration for integration tests."""
+def _get_base_model_configs() -> dict[str, Any]:
+    """Get base model configurations shared across fixtures."""
     return {
-        "models": {
-            "model_a": {
-                "provider": "mock",
-                "model_name": "test-a",
-                "display_name": "Model A",
-                "context_window": 4000,
-                "max_tokens": 1000,
-                "temperature": 0.7,
-            },
-            "model_b": {
-                "provider": "mock",
-                "model_name": "test-b",
-                "display_name": "Model B",
-                "context_window": 4000,
-                "max_tokens": 1000,
-                "temperature": 0.7,
-            },
-            "model_c": {
-                "provider": "mock",
-                "model_name": "test-c",
-                "display_name": "Model C",
-                "context_window": 4000,
-                "max_tokens": 1000,
-                "temperature": 0.7,
-            },
+        "model_a": {
+            "provider": "mock",
+            "model_name": "test-a",
+            "display_name": "Model A",
+            "context_window": 4000,
+            "max_tokens": 1000,
+            "temperature": 0.7,
         },
-        "retry": {
-            "max_attempts": 2,
-            "initial_delay": 0.1,
-            "max_delay": 1,
+        "model_b": {
+            "provider": "mock",
+            "model_name": "test-b",
+            "display_name": "Model B",
+            "context_window": 4000,
+            "max_tokens": 1000,
+            "temperature": 0.7,
         },
-        "features": {
-            "save_reports_to_disk": True,
-            "deterministic_mode": True,
-            "judge_model": None,
-            "knowledge_bank_model": "leader",
-            "llm_compression": False,
-        },
-        "knowledge_bank": {
-            "enabled": False,
-            "similarity_threshold": 0.75,
-            "max_insights": 100,
-        },
-        "prompts": {
-            "initial": "Please answer the following question clearly and concisely.",
-            "feedback": "Provide constructive feedback on the answer.",
-            "improvement": "Improve your answer based on the context provided.",
-            "evaluate": "Evaluate the responses and provide scores.",
-        },
-        "improvement_phase": {
-            "enabled": True,
-            "feedback_enabled": False,
-            "share_responses": True,
-        },
-        "refinement_phase": {
-            "enabled": True,
-            "feedback_enabled": False,
-            "share_responses": True,
-        },
-        "outputs_dir": str(tmp_output_dir),
     }
 
 
-@pytest.fixture()
-def kb_enabled_config(basic_config: dict[str, Any]) -> dict[str, Any]:
-    """Configuration with knowledge bank enabled."""
-    config = basic_config.copy()
-    config["knowledge_bank"]["enabled"] = True
-    return config
-
-
-@pytest.fixture()
-def minimal_config(tmp_output_dir: Path) -> dict[str, Any]:
-    """Minimal configuration (2 models, phases disabled)."""
+def _get_base_config() -> dict[str, Any]:
+    """Get base configuration shared across fixtures."""
     return {
-        "models": {
-            "model_a": {
-                "provider": "mock",
-                "model_name": "test-a",
-                "display_name": "Model A",
-                "context_window": 4000,
-                "max_tokens": 1000,
-                "temperature": 0.7,
-            },
-            "model_b": {
-                "provider": "mock",
-                "model_name": "test-b",
-                "display_name": "Model B",
-                "context_window": 4000,
-                "max_tokens": 1000,
-                "temperature": 0.7,
-            },
-        },
         "retry": {
             "max_attempts": 2,
             "initial_delay": 0.1,
@@ -246,17 +176,83 @@ def minimal_config(tmp_output_dir: Path) -> dict[str, Any]:
             "enabled": False,
         },
         "prompts": {
-            "initial": "Answer the question.",
-            "evaluate": "Score the responses.",
+            "initial": (
+                "Please answer the following question clearly and "
+                "concisely."
+            ),
+            "feedback": "Provide constructive feedback on the answer.",
+            "improvement": (
+                "Improve your answer based on the context provided."
+            ),
+            "evaluate": "Evaluate the responses and provide scores.",
         },
-        "improvement_phase": {
-            "enabled": False,
-        },
-        "refinement_phase": {
-            "enabled": False,
-        },
-        "outputs_dir": str(tmp_output_dir),
     }
+
+
+@pytest.fixture()
+def basic_config(tmp_dir: Path) -> dict[str, Any]:
+    """Basic configuration for integration tests."""
+    config = _get_base_config()
+    models = _get_base_model_configs()
+
+    # Add model_c for basic config
+    models["model_c"] = {
+        "provider": "mock",
+        "model_name": "test-c",
+        "display_name": "Model C",
+        "context_window": 4000,
+        "max_tokens": 1000,
+        "temperature": 0.7,
+    }
+
+    config["models"] = models
+    config["features"]["save_reports_to_disk"] = True
+    config["features"]["knowledge_bank_model"] = "leader"
+    config["knowledge_bank"]["similarity_threshold"] = 0.75
+    config["knowledge_bank"]["max_insights"] = 100
+    config["improvement_phase"] = {
+        "enabled": True,
+        "feedback_enabled": False,
+        "share_responses": True,
+    }
+    config["refinement_phase"] = {
+        "enabled": True,
+        "feedback_enabled": False,
+        "share_responses": True,
+    }
+    config["outputs_dir"] = str(tmp_dir)
+
+    return config
+
+
+@pytest.fixture()
+def kb_enabled_config(basic_config: dict[str, Any]) -> dict[str, Any]:
+    """Configuration with knowledge bank enabled."""
+    config = basic_config.copy()
+    config["knowledge_bank"]["enabled"] = True
+    return config
+
+
+@pytest.fixture()
+def minimal_config(tmp_dir: Path) -> dict[str, Any]:
+    """Minimal configuration (2 models, phases disabled)."""
+    config = _get_base_config()
+
+    # Use only 2 models for minimal config
+    config["models"] = _get_base_model_configs()
+
+    # Override prompts with minimal versions
+    config["prompts"] = {
+        "initial": "Answer the question.",
+        "evaluate": "Score the responses.",
+    }
+
+    # Disable phases
+    config["improvement_phase"] = {"enabled": False}
+    config["refinement_phase"] = {"enabled": False}
+    config["outputs_dir"] = str(tmp_dir)
+
+    return config
 
 
 @pytest.fixture()
@@ -296,7 +292,26 @@ async def arbitrium_instance(
     basic_config: dict[str, Any],
     mock_models: dict[str, MockModel],
 ) -> AsyncGenerator[Arbitrium, None]:
-    """Create an Arbitrium instance with mock models."""
+    """Create an Arbitrium instance with mock models.
+
+    This fixture provides a pre-configured Arbitrium instance for integration tests,
+    eliminating the need to manually set up the instance in each test.
+
+    Usage:
+        @pytest.mark.asyncio
+        async def test_something(arbitrium_instance: Arbitrium) -> None:
+            result, metrics = await arbitrium_instance.run_tournament("question")
+            assert result is not None
+
+    For tests requiring custom configuration or mock models with specific behavior,
+    you can either:
+    1. Create a custom fixture based on this one
+    2. Manually set up the instance (only if necessary)
+
+    This fixture uses:
+    - basic_config: Standard configuration with 3 models and all phases enabled
+    - mock_models: Three mock models (model_a, model_b, model_c) with default behavior
+    """
     # Skip health check to avoid LiteLLM calls
     arbitrium = await Arbitrium.from_settings(
         settings=basic_config,
@@ -309,12 +324,6 @@ async def arbitrium_instance(
     arbitrium._healthy_models = mock_models  # type: ignore[assignment]
 
     yield arbitrium
-
-
-@pytest.fixture()
-def simple_question() -> str:
-    """Simple test question."""
-    return "What is the capital of France?"
 
 
 @pytest.fixture()
