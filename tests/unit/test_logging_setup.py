@@ -224,7 +224,6 @@ class TestCreateFileHandler:
                 "%(message)s",
                 DuplicateFilter(),
                 ContextFilter(),
-                json_format=False,
                 include_module=True,
             )
 
@@ -234,7 +233,7 @@ class TestCreateFileHandler:
             Path(log_file).unlink(missing_ok=True)
 
     def test_create_handler_with_json_format(self) -> None:
-        """Test creating file handler with JSON format."""
+        """Test creating file handler (always uses JSON format)."""
         with tempfile.NamedTemporaryFile(delete=False, suffix=".log") as tmp:
             log_file = tmp.name
 
@@ -246,7 +245,6 @@ class TestCreateFileHandler:
                 "%(message)s",
                 DuplicateFilter(),
                 ContextFilter(),
-                json_format=True,
                 include_module=True,
             )
 
@@ -262,7 +260,6 @@ class TestCreateFileHandler:
             "%(message)s",
             DuplicateFilter(),
             MagicMock(),
-            json_format=False,
             include_module=True,
         )
 
@@ -284,7 +281,6 @@ class TestCreateFileHandler:
                 "%(message)s",
                 DuplicateFilter(),
                 MagicMock(),
-                json_format=False,
                 include_module=True,
             )
 
@@ -332,13 +328,13 @@ class TestSetupLogging:
 
         assert logger is not None
 
-    def test_setup_logging_json_format(self) -> None:
-        """Test setup_logging with JSON format."""
+    def test_setup_logging_with_log_file_always_json(self) -> None:
+        """Test setup_logging with log file (always uses JSON format)."""
         with tempfile.NamedTemporaryFile(delete=False, suffix=".log") as tmp:
             log_file = tmp.name
 
         try:
-            logger = setup_logging(log_file=log_file, json_format=True)
+            logger = setup_logging(log_file=log_file)
 
             assert logger is not None
         finally:

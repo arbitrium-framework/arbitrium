@@ -24,6 +24,37 @@ class DuplicateFilter(logging.Filter):
         self.seen_messages: set[str] = set()
         self.max_cache_size = DEFAULT_LOG_CACHE_SIZE
 
+    def filter(self, record: logging.LogRecord) -> bool:
+        """
+        Filter duplicate log messages based on level and message content.
+
+        Args:
+            record: The log record to filter
+
+        Returns:
+            True if message should be logged, False if it's a duplicate
+        """
+        # Create a hash key from level and first 200 chars of message
+        # This prevents exact duplicates while allowing similar messages
+        msg = record.getMessage()
+        key = f"{record.levelname}:{msg[:200]}"
+
+        # Check if we've seen this message before
+        if key in self.seen_messages:
+            return False
+
+        # Add to seen messages
+        self.seen_messages.add(key)
+
+        # Limit cache size to prevent unbounded memory growth
+        if len(self.seen_messages) > self.max_cache_size:
+            # Clear oldest half when limit reached
+            to_remove = len(self.seen_messages) - (self.max_cache_size // 2)
+            for _ in range(to_remove):
+                self.seen_messages.pop()
+
+        return True
+
 
 class ColorFormatter(logging.Formatter):
     """A logging formatter that adds color to log output and handles special display types."""
@@ -224,10 +255,9 @@ def _create_file_handler(
     file_format: str,
     file_duplicate_filter: DuplicateFilter,
     context_filter: logging.Filter,
-    json_format: bool = False,
     include_module: bool = True,
 ) -> logging.FileHandler | None:
-    """Create and test file handler, return None if it fails."""
+    """Create and test file handler, return None if it fails. Always uses JSON format."""
     try:
         file_handler = logging.FileHandler(
             log_file, mode="a", encoding="utf-8"
@@ -236,19 +266,10 @@ def _create_file_handler(
             logging.DEBUG
         )  # Save all logs to file regardless of level
 
-        # Choose formatter based on format preference
-        if json_format:
-            from arbitrium.logging.structured import JSONFormatter
+        # Always use JSON format for file logging (structured, parseable)
+        from arbitrium.logging.structured import JSONFormatter
 
-            file_handler.setFormatter(JSONFormatter())
-        elif include_module:
-            from arbitrium.logging.structured import StructuredFormatter
-
-            file_handler.setFormatter(
-                StructuredFormatter(file_format, include_module=include_module)
-            )
-        else:
-            file_handler.setFormatter(logging.Formatter(file_format))
+        file_handler.setFormatter(JSONFormatter())
 
         file_handler.addFilter(file_duplicate_filter)
         file_handler.addFilter(context_filter)
@@ -322,7 +343,6 @@ def setup_logging(
     debug: bool = False,
     verbose: bool = False,
     enable_file_logging: bool = True,
-    json_format: bool = False,
     include_module: bool = True,
 ) -> logging.Logger:
     """
@@ -334,11 +354,14 @@ def setup_logging(
         debug: If True, sets level to DEBUG regardless of level parameter
         verbose: If True, shows all INFO messages. If False, shows only major phase headers.
         enable_file_logging: If True and log_file is None, creates a timestamped log file in current directory.
-        json_format: If True, use JSON format for file logging (console stays human-readable).
         include_module: If True, include module/file information in logs.
 
     Returns:
         Configured logger
+
+    Note:
+        File logging always uses JSON format for structured, parseable logs.
+        Console output uses human-readable colored text format.
     """
     # Generate timestamped log file if not specified but file logging is enabled
     if log_file is None and enable_file_logging:
@@ -402,7 +425,6 @@ def setup_logging(
             file_format,
             file_duplicate_filter,
             context_filter,
-            json_format=json_format,
             include_module=include_module,
         )
 

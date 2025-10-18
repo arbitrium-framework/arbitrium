@@ -15,7 +15,7 @@ Learn by doing! These examples demonstrate Arbitrium Framework's core features i
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/arbitrium-framework/arbitrium/blob/main/examples/interactive_demo.ipynb)
 
 **Features:**
-- ✅ Real API calls to GPT-4, Claude, Gemini
+- ✅ Real API calls to GPT, Claude, Grok
 - ✅ Live tournament execution
 - ✅ Interactive API key entry
 - ✅ Cost tracking and metrics

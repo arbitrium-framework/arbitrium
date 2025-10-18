@@ -18,9 +18,9 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from arbitrium.core.comparison import ModelComparison
+from arbitrium import Arbitrium
+from arbitrium.core.tournament import ModelComparison
 from arbitrium.logging import get_contextual_logger
-from benchmarks.benchmark_helpers import initialize_benchmark
 from benchmarks.reporting import generate_manual_evaluation_template
 from tests.test_data_shared import TEST_QUESTIONS
 
@@ -63,8 +63,9 @@ async def main() -> None:
 
     results = []
 
-    # Initialize benchmark components once
-    _config, _models, comparison = initialize_benchmark("config.yml")
+    # Initialize Arbitrium once
+    arbitrium = await Arbitrium.from_config("config.yml")
+    comparison = arbitrium._create_comparison()
 
     for i, test_case in enumerate(TEST_QUESTIONS, 1):
         print(f"\n{'=' * 80}")

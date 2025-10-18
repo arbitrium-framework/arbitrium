@@ -48,60 +48,54 @@ The framework uses a **competitive tournament structure** where AI agents:
 
 ### Ideal Use Cases
 
-**Arbitrium Framework is purpose-built for high-stakes analytical decisions:**
+**Arbitrium Framework is purpose-built for decisions where quality and synthesis matter most:**
 
-- **Strategic Business Decisions** ($5K-$50K+ impact): Market entry analysis, investment theses, strategic planning
+- **Strategic Business Decisions**: Market entry analysis, investment theses, strategic planning where diverse perspectives improve outcomes
 - **Multi-Stakeholder Synthesis**: Policy development, complex project planning where diverse viewpoints must be integrated
 - **Compliance & Legal Analysis**: Scenarios requiring defensible audit trails and traceable reasoning
 - **Risk-Sensitive Problem Solving**: Decisions where wrong answers have significant financial, operational, or reputational consequences
 - **Research & Academic Analysis**: Complex problems requiring synthesis of competing theoretical frameworks
 
-**→ [Calculate if Arbitrium Framework is right for your decision](https://arbitrium-framework.github.io/arbitrium/calculator.html) ←**
+### Decision Stakes Framework
 
-### Decision Stakes Guidance
+Consider using Arbitrium Framework when your decision meets these criteria:
 
-| Decision Value   | Recommended Approach                  | Why                                              |
-| ---------------- | ------------------------------------- | ------------------------------------------------ |
-| < $500           | Single model (Claude/GPT-4)           | Tournament cost exceeds decision value           |
-| $500 - $5,000    | Single model + careful prompting      | Cost-effective for most use cases                |
-| $5,000 - $50,000 | **Arbitrium Framework recommended**           | Clear ROI, stakes justify thoroughness           |
-| > $50,000        | **Arbitrium Framework + human expert review** | Highest stakes demand multiple validation layers |
+| Stakes Level | Characteristics | Tournament Value |
+| ------------ | --------------- | ---------------- |
+| **Low Stakes** | Simple questions, quick answers needed, single perspective sufficient | Single model more efficient |
+| **Medium Stakes** | Important but straightforward, time-sensitive, clear evaluation criteria | Single model with careful prompting |
+| **High Stakes** | Complex analysis, multiple valid approaches, significant consequences | **Tournament recommended** - competitive refinement adds substantial value |
+| **Critical Stakes** | Highest importance, requires audit trail, long-term impact | **Tournament + human review** - comprehensive validation essential |
 
-### What Arbitrium Framework Is NOT For
+**You decide what matters.** The value of tournament-driven synthesis depends on your specific context, risk tolerance, and the cost of being wrong.
 
-**Don't use Arbitrium Framework for:**
+## What Makes Tournament-Based Synthesis Unique?
 
-- Routine queries or simple factual questions
-- Task automation and workflow orchestration (use CrewAI, AutoGen)
-- Code generation and tool use (use AutoGen, LangGraph)
-- Time-sensitive decisions requiring answers in < 2 minutes
-- Low-stakes decisions where a single model suffices
+**Arbitrium Framework** takes a different approach to multi-agent AI:
 
-## Why Not Just Use Existing Frameworks?
+### Competitive-Collaborative Architecture
 
-### Arbitrium Framework vs. AutoGen & Microsoft Agent Framework
+Instead of conversation or workflow delegation, Arbitrium Framework uses **tournament elimination with knowledge preservation**:
 
-**AutoGen's Philosophy:** Flexible, conversation-driven multi-agent collaboration for task execution (code generation, tool use, automation).
+- **Competition** drives quality through elimination of weaker solutions
+- **Collaboration** ensures valuable insights from eliminated agents aren't lost
+- **Progressive refinement** builds the final answer from the collective intelligence of all participants
 
-**Arbitrium Framework's Philosophy:** Structured competitive synthesis for decision-making. Not designed for general tasks, but specialized for converging on the best possible answer to complex, ambiguous questions.
+### When Tournament Architecture Shines
 
-**Key Difference:** AutoGen agents collaborate conversationally. Arbitrium Framework agents compete in tournaments while preserving collective wisdom.
+This approach is particularly effective when:
 
-### Arbitrium Framework vs. CrewAI
+- **Multiple valid approaches exist** - Tournament discovers which works best for your specific problem
+- **Synthesis is critical** - The Knowledge Bank ensures the best ideas from all perspectives are combined
+- **Audit trail matters** - Complete provenance tracking shows how each insight contributed to the final solution
+- **Quality trumps speed** - Iterative competitive refinement takes time but produces thoroughly vetted results
 
-**CrewAI's Philosophy:** Role-based team simulation for automating known business workflows (marketing, content creation, structured processes).
+### Complementary Tools
 
-**Arbitrium Framework's Philosophy:** Model-agnostic competition where the best solution wins regardless of predefined roles. Used when the optimal approach is unknown.
-
-**Key Difference:** CrewAI delegates tasks to specialists in a known workflow. Arbitrium Framework evaluates competing approaches to discover the best workflow.
-
-### Arbitrium Framework vs. LangGraph
-
-**LangGraph's Philosophy:** Low-level library for building custom, stateful, cyclical agent workflows with fine-grained control.
-
-**Arbitrium Framework's Philosophy:** Opinionated, ready-to-use system for competitive decision synthesis. The tournament workflow is built-in.
-
-**Key Difference:** LangGraph is a toolkit for building any custom agent system. Arbitrium Framework is a complete solution for one specific problem: high-stakes decision synthesis.
+Arbitrium Framework works alongside other multi-agent frameworks:
+- Use **AutoGen** or **LangGraph** for task automation and complex workflows
+- Use **CrewAI** for role-based team simulations
+- Use **Arbitrium Framework** when you need competitive synthesis and want the best answer to a complex question
 
 ## Core Architecture: How It Works
 
@@ -135,19 +129,19 @@ Knowledge Bank insights injected here.
     Phase2 --> M3_Imp[Model 3<br/>Improved]
     Phase2 --> M4_Imp[Model 4<br/>Improved]
 
-    M1_Imp --> Phase3[Phase 3:<br/>Cross-Evaluation]
-    M2_Imp --> Phase3
-    M3_Imp --> Phase3
-    M4_Imp --> Phase3
+    M1_Imp --> Eval[Elimination<br/>Round]
+    M2_Imp --> Eval
+    M3_Imp --> Eval
+    M4_Imp --> Eval
 
-    Phase3 -.Description.-> P3_Desc["`**Evaluation & Elimination**
+    Eval -.Description.-> EvalDesc["`**Evaluation & Elimination**
 
 Judge or peer review scores responses.
 Weakest model eliminated each round.
 Leader extracts insights from eliminated model.
 `"]
 
-    Phase3 --> Elim[Eliminate<br/>Weakest]
+    Eval --> Elim[Eliminate<br/>Weakest]
     Elim --> KB[(Knowledge Bank)]
     KB --> Check{More than 1<br/>model remaining?}
     KB -."insights injected".-> Phase2
@@ -165,19 +159,16 @@ Leader extracts insights from eliminated model.
 - No collaboration yet—pure diverse perspectives
 
 **Phase 2: Improvement**
-- Models exchange responses and improve their answers based on peer feedback
-- Customizable prompts control improvement behavior (critique, praise, or both)
+- Models exchange responses and improve their answers based on feedback
+- Customizable prompts control improvement behavior
 - Knowledge Bank insights (if enabled) are injected here
 
-**Phase 3: Cross-Evaluation**
+**Elimination Rounds** (repeat until one champion remains)
 - Judge model or peer review scores all responses
 - Identifies leader (highest score) and weakest model
 - Weakest model is eliminated
-
-**After each elimination:**
 - Leader extracts unique insights from eliminated model's response
 - Insights are vectorized, deduplicated, and stored in Knowledge Bank
-- Process repeats (refinement → evaluation → elimination) until one champion remains
 
 **Result:** Champion's final answer combines the strongest approach with preserved insights from all eliminated perspectives.
 
@@ -233,6 +224,12 @@ Built-in tools detect:
     ```
 
 4.  **Configure the application:**
+
+    **Option A: Free local models (no API keys)**
+    - Use `config.public.yml` as-is (requires Ollama)
+    - No additional configuration needed
+
+    **Option B: Cloud models (requires API keys)**
     - Copy the example configuration file:
       ```sh
       cp config.example.yml config.yml
@@ -252,23 +249,49 @@ Built-in tools detect:
 
 Get your first AI tournament running in minutes.
 
-1.  **Define your question:**
-    Open the config file and write the complex question or problem you want the agents to solve.
+### Option 1: Free Local Models (Recommended for First-Time Users)
 
-2.  **Run the tournament:**
+**No API keys required!** Run tournaments with free, local models via Ollama:
 
+1.  **Install Ollama** (if not already installed):
+    - Download from [ollama.com/download](https://ollama.com/download)
+
+2.  **Pull the demo models:**
     ```sh
-    arbitrium
+    ollama pull phi3
+    ollama pull gemma3:4b
+    ollama pull qwen3:4b
+    ollama pull phi4-mini
     ```
 
-    Or:
-
+3.  **Use the public config:**
     ```sh
-    python -m arbitrium.runners.cli
+    arbitrium --config config.public.yml
     ```
 
-3.  **View the results:**
-    Watch the terminal for real-time updates. The final "Champion Solution" will be displayed in the terminal.
+4.  **View the results:**
+    Watch the terminal for real-time updates. Results are saved to the current directory.
+
+### Option 2: Cloud Models (Requires API Keys)
+
+For more powerful models like GPT-4, Claude, or Gemini:
+
+1.  **Set up your configuration:**
+    ```sh
+    cp config.example.yml config.yml
+    ```
+
+2.  **Add API keys:**
+    Set environment variables for your providers:
+    ```sh
+    export OPENAI_API_KEY="your-key-here" # pragma: allowlist secret
+    export ANTHROPIC_API_KEY="your-key-here" # pragma: allowlist secret
+    ```
+
+3.  **Run the tournament:**
+    ```sh
+    arbitrium --config config.yml
+    ```
 
 ### Example Output
 
@@ -284,7 +307,7 @@ Phase 2: Improvement
 ├── Models exchanging responses and feedback...
 └── Generating improved answers...
 
-Phase 3: Cross-Evaluation
+Elimination Round 1
 ├── Evaluating all responses...
 └── Scores: GPT-4 (8.2), Claude (9.1), Gemini (7.8)
 
@@ -353,36 +376,37 @@ models:
 
 ## FAQ
 
-### Why not just use a single model with careful prompting?
+### When does tournament synthesis provide the most value?
 
-For most queries, you should! Arbitrium Framework is designed for high-stakes decisions ($5,000+) where the cost and time investment are justified. The tournament structure provides:
+Single models work excellently for many tasks. Tournament synthesis adds the most value when:
 
-- **Multiple perspectives** that surface blind spots
-- **Structured critique** that improves quality through adversarial collaboration
-- **Progressive refinement** where each round builds on previous insights
-- **Knowledge preservation** ensuring no valuable insight is lost
-- **Provenance tracking** showing how ideas evolved
+- **Multiple perspectives** surface blind spots and alternative approaches
+- **Structured critique** improves quality through competitive refinement
+- **Progressive iteration** allows each round to build on previous insights
+- **Knowledge preservation** ensures no valuable insight from any perspective is lost
+- **Provenance tracking** provides an audit trail showing how ideas evolved and were validated
 
-For routine queries, use Claude or GPT-4 directly.
+The tournament approach is designed for complex, high-stakes decisions where the investment in thoroughness is worthwhile.
 
-### What about multi-agent debate systems?
+### How does tournament synthesis differ from multi-agent debate?
 
-Multi-agent debate systems (like those built in AutoGen or LangGraph) aim to explore a problem space through discussion. Arbitrium Framework differs fundamentally:
+Tournament synthesis uses a unique competitive-collaborative model:
 
-- **Debate systems**: All agents participate throughout, working toward consensus through dialogue
-- **Arbitrium Framework**: Agents compete for survival through elimination, while their best ideas are preserved in the Knowledge Bank
+- **Competitive pressure** through elimination ensures only the strongest approaches survive
+- **Knowledge preservation** ensures valuable insights from all perspectives are retained
+- **Progressive refinement** builds each round on collective wisdom rather than individual dialogue
 
-The tournament creates genuine competitive pressure while the Knowledge Bank ensures collaborative benefit.
+This creates a different dynamic than continuous debate—agents must produce their best work knowing weaker solutions will be eliminated, while the Knowledge Bank ensures their contributions aren't lost.
 
 ### What about rate limits?
 
-Arbitrium Framework makes 12 parallel API calls during peak phases. This requires:
+Arbitrium Framework defaults to **2 parallel API calls** to work with free-tier API plans. This conservative default ensures compatibility with:
 
-- **Anthropic**: Tier 3+ (200 RPM) recommended
-- **OpenAI**: Tier 1+ (500 RPM) usually sufficient
-- **Google Vertex AI**: Default quotas typically handle it
+- **Anthropic**: Free tier (50 RPM)
+- **OpenAI**: Free tier (60 RPM)
+- **Google Vertex AI**: Default quotas
 
-For lower-tier API plans, consider adjusting `max_concurrent_requests` in the configuration file or using local models (Ollama) which have no rate limits.
+For faster execution with higher-tier API plans, increase `max_concurrent_requests` in your configuration. Local models (Ollama) have no rate limits.
 
 ### How do I know models aren't just agreeing with each other?
 

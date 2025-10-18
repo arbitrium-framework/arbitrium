@@ -92,12 +92,12 @@ ERROR_PATTERNS = {
 }
 
 # Timeout and concurrency defaults
-DEFAULT_MODEL_TIMEOUT = 600  # 10 minutes in seconds
+DEFAULT_MODEL_TIMEOUT = 300  # 5 minutes in seconds (reduced from 20 min)
 DEFAULT_THREAD_POOL_WORKERS = 5
-DEFAULT_INPUT_TIMEOUT = 60  # seconds
+DEFAULT_INPUT_TIMEOUT = 120  # seconds
 
 # Subprocess timeout defaults
-DEFAULT_SUBPROCESS_TIMEOUT = 120  # 2 minutes
+DEFAULT_SUBPROCESS_TIMEOUT = 240  # 4 minutes
 
 # Cache and memory limits
 DEFAULT_LOG_CACHE_SIZE = 1000

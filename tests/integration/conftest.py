@@ -1,5 +1,7 @@
 """Integration test fixtures and utilities."""
 
+import asyncio
+import re
 import tempfile
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
@@ -10,6 +12,7 @@ import pytest_asyncio
 
 from arbitrium import Arbitrium
 from arbitrium.models.base import BaseModel, ModelResponse
+from arbitrium.models.registry import ProviderRegistry
 
 
 class MockModel(BaseModel):
@@ -47,9 +50,6 @@ class MockModel(BaseModel):
 
     async def generate(self, prompt: str) -> ModelResponse:
         """Generate mock response."""
-        import asyncio
-        import re
-
         self._call_count += 1
 
         if self._delay > 0:
@@ -127,6 +127,31 @@ class MockModel(BaseModel):
         )
 
 
+# Register MockModel as a provider for testing
+@ProviderRegistry.register("mock")
+class MockProvider:
+    """Provider for mock models in tests."""
+
+    @classmethod
+    def from_config(cls, model_key: str, config: dict[str, Any]) -> BaseModel:
+        """Create a MockModel from configuration.
+
+        Args:
+            model_key: The key used for this model in the config
+            config: The model configuration dictionary
+
+        Returns:
+            A new MockModel instance
+        """
+        return MockModel(
+            model_name=str(config.get("model_name", model_key)),
+            display_name=str(config.get("display_name", model_key)),
+            temperature=float(config.get("temperature", 0.7)),
+            max_tokens=int(config.get("max_tokens", 1000)),
+            context_window=int(config.get("context_window", 4000)),
+        )
+
+
 @pytest.fixture()
 def tmp_output_dir() -> Generator[Path, None, None]:
     """Create temporary output directory."""
@@ -182,10 +207,38 @@ def basic_config(tmp_output_dir: Path) -> dict[str, Any]:
             "max_insights": 100,
         },
         "prompts": {
-            "initial": "Please answer the following question clearly and concisely.",
-            "feedback": "Provide constructive feedback on the answer.",
-            "improvement": "Improve your answer based on the context provided.",
-            "evaluate": "Evaluate the responses and provide scores.",
+            "initial": {
+                "content": "Please answer the following question clearly and concisely.",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "initial_response",
+                },
+            },
+            "feedback": {
+                "content": "Provide constructive feedback on the answer.",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "feedback",
+                },
+            },
+            "improvement": {
+                "content": "Improve your answer based on the context provided.",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "improvement",
+                },
+            },
+            "evaluate": {
+                "content": "Evaluate the responses and provide scores.",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "evaluation",
+                },
+            },
         },
         "improvement_phase": {
             "enabled": True,
@@ -246,8 +299,38 @@ def minimal_config(tmp_output_dir: Path) -> dict[str, Any]:
             "enabled": False,
         },
         "prompts": {
-            "initial": "Answer the question.",
-            "evaluate": "Score the responses.",
+            "initial": {
+                "content": "Answer the question.",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "initial_response",
+                },
+            },
+            "feedback": {
+                "content": "Provide feedback.",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "feedback",
+                },
+            },
+            "improvement": {
+                "content": "Improve the answer.",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "improvement",
+                },
+            },
+            "evaluate": {
+                "content": "Score the responses.",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "evaluation",
+                },
+            },
         },
         "improvement_phase": {
             "enabled": False,

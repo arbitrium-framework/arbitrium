@@ -3,14 +3,17 @@ Base module for LLM model interactions in Arbitrium Framework.
 """
 
 import asyncio
+import hashlib
+import json
 import random
+import sqlite3
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 import litellm
 
-from ..config.defaults import DEFAULT_COMPRESSION_MODEL
 from ..logging import get_contextual_logger
 from ..utils.constants import ERROR_PATTERNS
 from ..utils.exceptions import ModelResponseError
@@ -27,46 +30,164 @@ def _get_module_logger() -> Any:
     return _logger
 
 
+# Retryable error types
+_RETRYABLE_ERROR_TYPES = {
+    "rate_limit",
+    "timeout",
+    "connection",
+    "service",
+    "overloaded",
+}
+
+# Permission-related error patterns (not retryable)
+_PERMISSION_ERROR_PATTERNS = [
+    "permission_denied",
+    "service_disabled",
+    "api has not been used",
+]
+
+
+def _is_retryable_error_type(error_type: str) -> bool:
+    """Check if an error type is retryable."""
+    return error_type in _RETRYABLE_ERROR_TYPES
+
+
+def _check_exception_type(response: Exception) -> tuple[bool, str] | None:
+    """Check exception type for known non-retryable errors."""
+    exception_name = type(response).__name__.lower()
+
+    if "notfounderror" in exception_name:
+        return False, "not_found"
+
+    if "authenticationerror" in exception_name:
+        return False, "authentication"
+
+    return None
+
+
+def _check_permission_errors(error_msg: str) -> bool:
+    """Check if error message indicates a permission error."""
+    return any(p in error_msg for p in _PERMISSION_ERROR_PATTERNS)
+
+
+def _match_error_patterns(error_msg: str) -> tuple[bool, str] | None:
+    """Match error message against known patterns."""
+    for error_type, patterns in ERROR_PATTERNS.items():
+        if any(p in error_msg for p in patterns):
+            return True, error_type
+    return None
+
+
 def analyze_error_response(response: Any) -> tuple[bool, str]:
     """Analyzes an error response to determine if it's retryable and what type it is."""
+    # Extract error message
     error_msg = ""
+
+    # Check if response has explicit error_type attribute
     if hasattr(response, "error"):
         error_msg = str(response.error).lower()
         error_type = getattr(response, "error_type", None)
         if error_type:
-            return (
-                error_type
-                in [
-                    "rate_limit",
-                    "timeout",
-                    "connection",
-                    "service",
-                    "overloaded",
-                ],
-                error_type,
-            )
-    elif isinstance(response, Exception):
-        error_msg = str(response).lower()
-        if "notfounderror" in type(response).__name__.lower():
-            return False, "not_found"
-        if "authenticationerror" in type(response).__name__.lower():
-            return False, "authentication"
+            return _is_retryable_error_type(error_type), error_type
 
-    if any(
-        p in error_msg
-        for p in [
-            "permission_denied",
-            "service_disabled",
-            "api has not been used",
-        ]
-    ):
+    # Handle exception types
+    if isinstance(response, Exception):
+        error_msg = str(response).lower()
+        exception_result = _check_exception_type(response)
+        if exception_result:
+            return exception_result
+
+    # Check for permission errors
+    if _check_permission_errors(error_msg):
         return False, "permission_denied"
 
-    for error_type, patterns in ERROR_PATTERNS.items():
-        if any(p in error_msg for p in patterns):
-            return True, error_type
+    # Match against error patterns
+    pattern_result = _match_error_patterns(error_msg)
+    if pattern_result:
+        return pattern_result
 
     return False, "general"
+
+
+# Backoff multipliers for different error types and providers
+_BACKOFF_MULTIPLIERS = {
+    "rate_limit": {"anthropic": 2.5, "default": 2.0},
+    "overloaded": {"anthropic": 3.0, "default": 2.5},
+    "timeout": 1.5,
+    "connection": 1.8,
+    "service": 2.0,
+    "general": 1.5,
+}
+
+
+def _get_backoff_multiplier(error_type: str, provider: str) -> float:
+    """Get backoff multiplier for error type and provider."""
+    provider = provider.lower() if provider else "default"
+    multiplier_value = _BACKOFF_MULTIPLIERS.get(
+        error_type, _BACKOFF_MULTIPLIERS["general"]
+    )
+
+    if isinstance(multiplier_value, dict):
+        provider_mult = multiplier_value.get(
+            provider, multiplier_value["default"]
+        )
+        return float(provider_mult) if provider_mult is not None else 1.5
+
+    if isinstance(multiplier_value, (int, float)):
+        return float(multiplier_value)
+
+    return 1.5  # Default fallback
+
+
+def _get_jitter_range(error_type: str, provider: str) -> float:
+    """Get jitter range for error type and provider."""
+    if error_type in ["rate_limit", "overloaded"] and provider == "anthropic":
+        return 0.05
+    return 0.1
+
+
+def _calculate_jittered_delay(
+    current_delay: float,
+    max_delay: float,
+    multiplier: float,
+    jitter_range: float,
+) -> float:
+    """Calculate delay with jitter applied."""
+    jitter_factor = 1.0 + random.uniform(-jitter_range, jitter_range)
+    return min(current_delay * multiplier, max_delay) * jitter_factor
+
+
+def _check_timeout_remaining(
+    start_time: float,
+    total_timeout: float,
+    logger: Any | None,
+) -> float | None:
+    """Check if there's time remaining for retry. Returns remaining time or None."""
+    remaining_time = total_timeout - (time.monotonic() - start_time)
+    if remaining_time <= 0:
+        if logger:
+            logger.error("No time left for retry. Stopping retries.")
+        return None
+    return remaining_time
+
+
+def _check_min_delay(
+    actual_delay: float,
+    initial_delay: float,
+    error_type: str,
+    logger: Any | None,
+) -> bool:
+    """Check if delay meets minimum threshold. Returns True if sufficient."""
+    min_delay_factor = (
+        0.5 if error_type in ["rate_limit", "overloaded"] else 0.25
+    )
+    if actual_delay < initial_delay * min_delay_factor:
+        if logger:
+            logger.error(
+                "Not enough time for proper retry delay. Stopping retries."
+            )
+        return False
+    return True
 
 
 # Helper for retry delay calculation
@@ -81,59 +202,186 @@ async def _calculate_retry_delay(
     provider: str = "default",
 ) -> float | None:
     """Calculates the delay for the next retry attempt with jitter."""
-    backoff_multipliers = {
-        "rate_limit": {"anthropic": 2.5, "default": 2.0},
-        "overloaded": {"anthropic": 3.0, "default": 2.5},
-        "timeout": 1.5,
-        "connection": 1.8,
-        "service": 2.0,
-        "general": 1.5,
-    }
-
-    provider = provider.lower() if provider else "default"
-    multiplier_value = backoff_multipliers.get(
-        error_type, backoff_multipliers["general"]
+    multiplier = _get_backoff_multiplier(error_type, provider)
+    jitter_range = _get_jitter_range(error_type, provider)
+    jittered_delay = _calculate_jittered_delay(
+        current_delay, max_delay, multiplier, jitter_range
     )
 
-    multiplier: float
-    if isinstance(multiplier_value, dict):
-        provider_mult = multiplier_value.get(
-            provider, multiplier_value["default"]
-        )
-        multiplier = float(provider_mult) if provider_mult is not None else 1.5
-    elif isinstance(multiplier_value, (int, float)):
-        multiplier = float(multiplier_value)
-    else:
-        multiplier = 1.5  # Default fallback
-
-    jitter_range = (
-        0.05
-        if error_type in ["rate_limit", "overloaded"]
-        and provider == "anthropic"
-        else 0.1
+    # Check timeout
+    remaining_time = _check_timeout_remaining(
+        start_time, total_timeout, logger
     )
-    jitter_factor = 1.0 + random.uniform(-jitter_range, jitter_range)
-    jittered_delay = min(current_delay * multiplier, max_delay) * jitter_factor
-
-    remaining_time = total_timeout - (time.monotonic() - start_time)
-    if remaining_time <= 0:
-        if logger:
-            logger.error("No time left for retry. Stopping retries.")
+    if remaining_time is None:
         return None
 
+    # Check minimum delay
     actual_delay = min(jittered_delay, remaining_time)
-    min_delay_factor = (
-        0.5 if error_type in ["rate_limit", "overloaded"] else 0.25
-    )
-    if actual_delay < initial_delay * min_delay_factor:
-        if logger:
-            logger.error(
-                "Not enough time for proper retry delay. Stopping retries."
-            )
+    if not _check_min_delay(actual_delay, initial_delay, error_type, logger):
         return None
 
+    # Sleep and return next delay
     await asyncio.sleep(actual_delay)
     return min(current_delay * multiplier, max_delay)
+
+
+class ResponseCache:
+    """Caches LLM responses to avoid redundant API calls and reduce costs.
+
+    Uses SQLite to store responses keyed by model name, prompt, temperature,
+    and max_tokens. This dramatically reduces costs during development,
+    testing, and when re-running tournaments with similar questions.
+
+    Args:
+        db_path: Path to SQLite database file (default: arbitrium_cache.db)
+        enabled: Whether caching is enabled (default: True)
+
+    Example:
+        ```python
+        cache = ResponseCache("cache.db")
+
+        # Check cache before API call
+        cached = cache.get("gpt-4o", prompt, 0.7, 2048)
+        if cached:
+            response, cost = cached
+            return ModelResponse(response, cost=cost)
+
+        # ... make API call ...
+
+        # Save to cache
+        cache.set("gpt-4o", prompt, 0.7, 2048, response.content, response.cost)
+        ```
+    """
+
+    def __init__(
+        self, db_path: str | Path = "arbitrium_cache.db", enabled: bool = True
+    ) -> None:
+        """Initialize response cache with SQLite database."""
+        self.enabled = enabled
+        if not self.enabled:
+            self.conn = None
+            return
+
+        self.db_path = Path(db_path)
+        self.conn = sqlite3.connect(str(self.db_path))
+        self._create_table()
+
+    def _create_table(self) -> None:
+        """Create the responses table if it doesn't exist."""
+        if not self.conn:
+            return
+
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS responses (
+                cache_key TEXT PRIMARY KEY,
+                response TEXT NOT NULL,
+                cost REAL NOT NULL,
+                timestamp INTEGER NOT NULL
+            )
+            """
+        )
+        self.conn.commit()
+
+    def _hash_key(
+        self, model_name: str, prompt: str, temperature: float, max_tokens: int
+    ) -> str:
+        """Generate a cache key from request parameters."""
+        key_data = {
+            "model": model_name,
+            "prompt": prompt,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        key_string = json.dumps(key_data, sort_keys=True)
+        return hashlib.sha256(key_string.encode()).hexdigest()
+
+    def get(
+        self, model_name: str, prompt: str, temperature: float, max_tokens: int
+    ) -> tuple[str, float] | None:
+        """Check cache for a matching response.
+
+        Args:
+            model_name: Name of the LLM model
+            prompt: The prompt text
+            temperature: Temperature parameter
+            max_tokens: Max tokens parameter
+
+        Returns:
+            Tuple of (response_text, cost) if found, None otherwise
+        """
+        if not self.enabled or not self.conn:
+            return None
+
+        key = self._hash_key(model_name, prompt, temperature, max_tokens)
+        cursor = self.conn.execute(
+            "SELECT response, cost FROM responses WHERE cache_key = ?", (key,)
+        )
+        result = cursor.fetchone()
+        if result:
+            return (result[0], result[1])
+        return None
+
+    def set(
+        self,
+        model_name: str,
+        prompt: str,
+        temperature: float,
+        max_tokens: int,
+        response: str,
+        cost: float,
+    ) -> None:
+        """Save a response to the cache.
+
+        Args:
+            model_name: Name of the LLM model
+            prompt: The prompt text
+            temperature: Temperature parameter
+            max_tokens: Max tokens parameter
+            response: The response text to cache
+            cost: Cost of the API call in USD
+        """
+        if not self.enabled or not self.conn:
+            return
+
+        key = self._hash_key(model_name, prompt, temperature, max_tokens)
+        timestamp = int(time.time())
+        self.conn.execute(
+            "INSERT OR REPLACE INTO responses VALUES (?, ?, ?, ?)",
+            (key, response, cost, timestamp),
+        )
+        self.conn.commit()
+
+    def clear(self) -> None:
+        """Clear all cached responses."""
+        if not self.enabled or not self.conn:
+            return
+
+        self.conn.execute("DELETE FROM responses")
+        self.conn.commit()
+
+    def stats(self) -> dict[str, int]:
+        """Get cache statistics.
+
+        Returns:
+            Dictionary with cache statistics (total_entries, etc.)
+        """
+        if not self.enabled or not self.conn:
+            return {"total_entries": 0}
+
+        cursor = self.conn.execute("SELECT COUNT(*) FROM responses")
+        count = cursor.fetchone()[0]
+        return {"total_entries": count}
+
+    def close(self) -> None:
+        """Close the database connection."""
+        if self.conn:
+            self.conn.close()
+            self.conn = None
+
+    def __del__(self) -> None:
+        """Ensure connection is closed on deletion."""
+        self.close()
 
 
 class ModelResponse:
@@ -204,7 +452,7 @@ class BaseModel(ABC):
         temperature: float,
         context_window: int | None = None,
         use_llm_compression: bool = True,
-        compression_model: str = DEFAULT_COMPRESSION_MODEL,
+        compression_model: str | None = None,
     ):
         """
         Initialize a model.
@@ -218,7 +466,7 @@ class BaseModel(ABC):
             temperature: Temperature setting for response generation
             context_window: Total context window size
             use_llm_compression: Whether to use LLM for prompt compression
-            compression_model: Model to use for compression
+            compression_model: Model to use for compression (None = auto-select highest context)
         """
         self.model_key = model_key
         self.model_name = model_name
@@ -269,7 +517,7 @@ class LiteLLMModel(BaseModel):
         reasoning_effort: str | None = None,
         model_config: dict[str, Any] | None = None,
         use_llm_compression: bool = True,
-        compression_model: str = DEFAULT_COMPRESSION_MODEL,
+        compression_model: str | None = None,
         system_prompt: str | None = None,
     ):
         """Initialize a LiteLLM-backed model."""
@@ -489,33 +737,39 @@ class LiteLLMModel(BaseModel):
 
         return None
 
-    async def generate(self, prompt: str) -> ModelResponse:
-        """Generates a response to the given prompt using LiteLLM."""
-        logger = _get_module_logger()
+    def _validate_prompt(
+        self, prompt: str
+    ) -> tuple[str, ModelResponse | None]:
+        """Validate and process prompt. Returns (processed_prompt, error_response)."""
         if not prompt or not prompt.strip():
-            return ModelResponse.create_error("Empty prompt provided")
+            return "", ModelResponse.create_error("Empty prompt provided")
 
-        # Handle prompt size validation
         validated_prompt = self._handle_prompt_size_validation(prompt)
         if validated_prompt is None:
             method = (
                 "LLM compression" if self.use_llm_compression else "truncation"
             )
-            return ModelResponse.create_error(
+            return "", ModelResponse.create_error(
                 f"Prompt too large even after {method}"
             )
-        prompt = validated_prompt
 
-        # Prepare parameters
-        temperature = (
-            1.0 if self.requires_temp_one else float(self.temperature)
-        )
+        return validated_prompt, None
 
-        # Build messages array with optional system prompt
+    def _build_messages(self, prompt: str) -> list[dict[str, str]]:
+        """Build messages array with optional system prompt."""
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
         messages.append({"role": "user", "content": prompt})
+        return messages
+
+    def _build_completion_params(
+        self, messages: list[dict[str, str]], logger: Any
+    ) -> dict[str, Any]:
+        """Build parameters for litellm.acompletion."""
+        temperature = (
+            1.0 if self.requires_temp_one else float(self.temperature)
+        )
 
         params = {
             "model": self.model_name,
@@ -530,48 +784,90 @@ class LiteLLMModel(BaseModel):
                 f"Using reasoning_effort={self.reasoning_effort} for {self.display_name}"
             )
 
-        try:
-            response = await asyncio.wait_for(
-                litellm.acompletion(**params), timeout=600
-            )
-            cost = self._extract_response_cost(response)
+        return params
 
-            # Try to extract and clean content
-            model_response = self._try_extract_content_from_response(
-                response, cost, logger
-            )
-            if model_response:
-                return model_response
+    async def _execute_completion(
+        self, params: dict[str, Any], logger: Any
+    ) -> ModelResponse:
+        """Execute API call and process response."""
+        from ..utils.constants import DEFAULT_MODEL_TIMEOUT
 
-            # Only error if truly nothing useful
+        response = await asyncio.wait_for(
+            litellm.acompletion(**params), timeout=DEFAULT_MODEL_TIMEOUT
+        )
+        cost = self._extract_response_cost(response)
+
+        # Try to extract and clean content
+        model_response = self._try_extract_content_from_response(
+            response, cost, logger
+        )
+        if not model_response:
             raise ModelResponseError(
                 f"Model {self.display_name} returned empty or unusable response",
                 model_key=self.model_key,
             )
-        except (
-            litellm.exceptions.RateLimitError,
-            litellm.exceptions.Timeout,
-            litellm.exceptions.AuthenticationError,
-            litellm.exceptions.ServiceUnavailableError,
-            litellm.exceptions.InternalServerError,
-            ModelResponseError,
-        ) as e:
-            error_type, error_message = self._classify_exception(e)
+
+        # Log the response in structured format
+        logger.log_response(
+            model_response.content,
+            model=self.display_name,
+            model_key=self.model_key,
+            cost=model_response.cost,
+        )
+        return model_response
+
+    def _handle_exception(self, exc: Exception, logger: Any) -> ModelResponse:
+        """Handle exceptions and return error response."""
+        error_type, error_message = self._classify_exception(exc)
+
+        # Log based on exception type
+        if isinstance(
+            exc,
+            (
+                litellm.exceptions.RateLimitError,
+                litellm.exceptions.Timeout,
+                litellm.exceptions.AuthenticationError,
+                litellm.exceptions.ServiceUnavailableError,
+                litellm.exceptions.InternalServerError,
+                ModelResponseError,
+            ),
+        ):
             logger.warning(
                 f"{error_message}. model={self.model_name}, provider={self.provider}"
             )
-            return ModelResponse.create_error(
-                error_message, error_type=error_type, provider=self.provider
-            )
-        except Exception as e:
-            error_type, error_message = self._classify_exception(e)
+        else:
             logger.error(
                 f"API error with {self.display_name}: {error_message}",
                 exc_info=True,
             )
-            return ModelResponse.create_error(
-                error_message, error_type=error_type, provider=self.provider
-            )
+
+        return ModelResponse.create_error(
+            error_message, error_type=error_type, provider=self.provider
+        )
+
+    async def generate(self, prompt: str) -> ModelResponse:
+        """Generates a response to the given prompt using LiteLLM."""
+        logger = _get_module_logger()
+
+        # Validate prompt
+        validated_prompt, error = self._validate_prompt(prompt)
+        if error:
+            return error
+
+        # Log the prompt in structured format
+        logger.log_prompt(
+            validated_prompt, model=self.display_name, model_key=self.model_key
+        )
+
+        # Build request parameters
+        messages = self._build_messages(validated_prompt)
+        params = self._build_completion_params(messages, logger)
+
+        # Execute request
+        try:
+            return await self._execute_completion(params, logger)
+        except Exception as e:
+            return self._handle_exception(e, logger)
 
     def _classify_exception(self, exc: Exception) -> tuple[str, str]:
         """Classifies an exception into an error type and message."""
@@ -753,12 +1049,15 @@ class LiteLLMModel(BaseModel):
     @classmethod
     def _get_compression_settings(
         cls, model_config: dict[str, Any]
-    ) -> tuple[bool, str]:
-        """Get LLM compression settings from config."""
+    ) -> tuple[bool, str | None]:
+        """Get LLM compression settings from config.
+
+        Returns:
+            Tuple of (use_llm_compression, compression_model).
+            compression_model is None if auto-selection should be used.
+        """
         use_llm_compression = model_config.get("llm_compression", True)
-        compression_model = model_config.get(
-            "compression_model", DEFAULT_COMPRESSION_MODEL
-        )
+        compression_model = model_config.get("compression_model", None)
         return use_llm_compression, compression_model
 
     @classmethod
@@ -926,7 +1225,7 @@ async def run_with_retry(
     max_attempts: int = 5,
     initial_delay: int | None = None,
     max_delay: int | None = None,
-    total_timeout: int = 900,  # 15 minutes total timeout
+    total_timeout: int = 900,  # 15 minutes total timeout (reduced from 30 min)
     logger: Any | None = None,
 ) -> ModelResponse:
     """Runs a model generation with retry logic."""

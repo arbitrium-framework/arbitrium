@@ -2,7 +2,7 @@
 """Test the new penalty logic - invalid evaluations should be discarded."""
 
 
-from arbitrium.core.comparison import ScoreExtractor
+from arbitrium.core.scorer import ScoreExtractor
 from arbitrium.logging import get_contextual_logger, setup_logging
 
 setup_logging(enable_file_logging=False)

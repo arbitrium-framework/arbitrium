@@ -14,35 +14,28 @@ pip install -e .
 pip install -e .[bench]
 ```
 
-### 2. Choose Configuration Profile
+### 2. Setup and Run
 
-**Option A: Local-only (No API keys required)**
+**Set API keys (for cloud models):**
+```bash
+export OPENAI_API_KEY="..."
+export ANTHROPIC_API_KEY="..."
+export VERTEX_AI_API_KEY="..."
+# Or use 1Password integration (see main README)
+```
+
+**For local models (optional, requires Ollama):**
 ```bash
 # Install Ollama: https://ollama.ai
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # Pull models
 ollama pull llama3 phi3 mistral
-
-# Run benchmarks
-python -m benchmarks.standard_benchmarks --benchmark both --config config.local.yml
 ```
 
-**Option B: Cloud models (Requires API keys)**
+**Run benchmarks:**
 ```bash
-# Set API keys via environment variables or 1Password
-export OPENAI_API_KEY="..."
-export ANTHROPIC_API_KEY="..."
-export VERTEX_AI_API_KEY="..."
-export XAI_API_KEY="..."
-
-# Run benchmarks
-python -m benchmarks.standard_benchmarks --benchmark both --config config.cloud.yml
-```
-
-**Option C: Mixed (Your custom config)**
-```bash
-# Use config.example.yml or create your own
+# Edit config.example.yml to configure your models, then:
 python -m benchmarks.standard_benchmarks --benchmark both --config config.example.yml
 ```
 
@@ -186,11 +179,12 @@ Set `knowledge_bank.enabled: false` in config and run separately.
 ## Citation
 
 ```bibtex
-@misc{arbitrium2025,
-  title={Arbitrium: Tournament-Based Multi-Model Synthesis},
-  author={Arbitrium Framework Team},
-  year={2025},
-  note={Open-source framework for collaborative-competitive LLM evaluation}
+@software{arbitrium2025,
+  author = {Eremeev, Nikolay},
+  title = {Arbitrium: Tournament-Based Multi-Model Synthesis Framework},
+  year = {2025},
+  version = {0.0.4},
+  url = {https://github.com/arbitrium-framework/arbitrium}
 }
 ```
 

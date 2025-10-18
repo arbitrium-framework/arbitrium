@@ -13,10 +13,10 @@ Configuration:
     - See config.micro_benchmark.yml for example structure
 
 Usage:
-    python -m arbitrium.benchmarks.micro_benchmark --config <path-to-config.yml>
+    python -m benchmarks.micro_benchmark --config <path-to-config.yml>
 
 Example:
-    python -m arbitrium.benchmarks.micro_benchmark --config src/arbitrium/benchmarks/config.micro_benchmark.yml
+    python -m benchmarks.micro_benchmark --config config.example.yml
 
 """
 

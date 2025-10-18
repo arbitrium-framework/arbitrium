@@ -14,6 +14,86 @@ from ..utils.exceptions import ConfigurationError
 logger = get_contextual_logger("arbitrium.utils.secrets")
 
 
+def _validate_config_structure(config: dict[str, object] | None) -> None:
+    """Validate basic config structure."""
+    if config is None:
+        raise ConfigurationError(
+            "Secret configuration not provided. Config must be passed to get_secret_config."
+        )
+
+    if not isinstance(config, dict):
+        raise ConfigurationError("Invalid config type. Expected dict.")
+
+
+def _extract_secrets_config(config: dict[str, object]) -> dict[str, object]:
+    """Extract and validate secrets configuration section."""
+    secrets_config: object = config.get("secrets", {})
+
+    if not isinstance(secrets_config, dict):
+        raise ConfigurationError("Invalid secrets configuration type.")
+
+    if not secrets_config:
+        raise ConfigurationError(
+            "No 'secrets' section found in configuration file. Please add secrets configuration."
+        )
+
+    return secrets_config
+
+
+def _extract_providers_config(
+    secrets_config: dict[str, object],
+) -> dict[str, object]:
+    """Extract and validate providers configuration."""
+    providers: object = secrets_config.get("providers", {})
+
+    if not isinstance(providers, dict):
+        raise ConfigurationError("Invalid providers configuration type.")
+
+    if not providers:
+        raise ConfigurationError(
+            "No providers found in secrets configuration. Please add provider configurations."
+        )
+
+    return providers
+
+
+def _validate_provider_config(provider: str, config_data: object) -> None:
+    """Validate configuration for a single provider."""
+    if not isinstance(config_data, dict):
+        raise ConfigurationError(
+            f"Invalid secret configuration for provider '{provider}': must be a dictionary"
+        )
+
+    if "env_var" not in config_data:
+        raise ConfigurationError(
+            f"Missing 'env_var' in secret configuration for provider '{provider}'"
+        )
+
+    if "op_path" not in config_data:
+        raise ConfigurationError(
+            f"Missing 'op_path' in secret configuration for provider '{provider}'"
+        )
+
+
+def _build_secret_config(
+    providers: dict[str, object],
+) -> dict[str, tuple[str, str]]:
+    """Build secret configuration from providers dict."""
+    secret_config: dict[str, tuple[str, str]] = {}
+
+    for provider, config_data in providers.items():
+        _validate_provider_config(provider, config_data)
+        assert isinstance(
+            config_data, dict
+        )  # Validated by _validate_provider_config
+        secret_config[provider] = (
+            str(config_data["env_var"]),
+            str(config_data["op_path"]),
+        )
+
+    return secret_config
+
+
 def get_secret_config(config: dict[str, object]) -> dict[str, tuple[str, str]]:
     """
     Get secret configuration from config file. No fallbacks - config is required.
@@ -27,51 +107,10 @@ def get_secret_config(config: dict[str, object]) -> dict[str, tuple[str, str]]:
     Raises:
         ConfigurationError: If config is not set or invalid
     """
-    if config is None:
-        raise ConfigurationError(
-            "Secret configuration not provided. Config must be passed to get_secret_config."
-        )
-
-    if not isinstance(config, dict):
-        raise ConfigurationError("Invalid config type. Expected dict.")
-
-    secrets_config: object = config.get("secrets", {})
-    if not isinstance(secrets_config, dict):
-        raise ConfigurationError("Invalid secrets configuration type.")
-    if not secrets_config:
-        raise ConfigurationError(
-            "No 'secrets' section found in configuration file. Please add secrets configuration."
-        )
-
-    providers = secrets_config.get("providers", {})
-    if not providers:
-        raise ConfigurationError(
-            "No providers found in secrets configuration. Please add provider configurations."
-        )
-
-    secret_config = {}
-    for provider, config_data in providers.items():
-        if not isinstance(config_data, dict):
-            raise ConfigurationError(
-                f"Invalid secret configuration for provider '{provider}': must be a dictionary"
-            )
-
-        if "env_var" not in config_data:
-            raise ConfigurationError(
-                f"Missing 'env_var' in secret configuration for provider '{provider}'"
-            )
-
-        if "op_path" not in config_data:
-            raise ConfigurationError(
-                f"Missing 'op_path' in secret configuration for provider '{provider}'"
-            )
-
-        secret_config[provider] = (
-            config_data["env_var"],
-            config_data["op_path"],
-        )
-
-    return secret_config
+    _validate_config_structure(config)
+    secrets_config = _extract_secrets_config(config)
+    providers = _extract_providers_config(secrets_config)
+    return _build_secret_config(providers)
 
 
 def _ensure_op_cli_is_available() -> None:

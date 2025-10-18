@@ -3,6 +3,8 @@
 import argparse
 from typing import Any
 
+from arbitrium.__about__ import __version__
+
 # CLI-only default (framework itself has no defaults)
 DEFAULT_CONFIG_FILE = "config.example.yml"
 
@@ -15,6 +17,13 @@ def parse_arguments() -> dict[str, Any]:
     """
     parser = argparse.ArgumentParser(
         description="Arbitrium Framework - LLM Comparison and Evaluation Tool"
+    )
+
+    # Version flag
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"Arbitrium Framework {__version__}",
     )
 
     # Main arguments (tournament is the default behavior)
@@ -34,7 +43,7 @@ def parse_arguments() -> dict[str, Any]:
     parser.add_argument(
         "-o",
         "--outputs-dir",
-        default=".",
+        default=None,
         help="Output directory for all files (default: current directory)",
     )
     parser.add_argument(

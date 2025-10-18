@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from arbitrium.config.loader import Config
-from arbitrium.core.comparison import ModelComparison
+from arbitrium.core.tournament import ModelComparison
 from arbitrium.logging import get_contextual_logger
 from arbitrium.models.base import BaseModel, ModelResponse
 from arbitrium.models.factory import create_models_from_config
@@ -32,20 +32,16 @@ class _InternalEventHandler:
 class _InternalHost:
     """Internal host for file operations."""
 
-    def __init__(self, base_dir: str):
+    def __init__(self, base_dir: str | None):
         """
         Initialize host with output directory.
 
         Args:
-            base_dir: Output directory path (REQUIRED - no defaults)
+            base_dir: Output directory path. If None, uses current directory.
 
-        Raises:
-            ValueError: If base_dir is not provided
         """
-        if not base_dir:
-            raise ValueError(
-                "outputs_dir is required by framework - no default values allowed"
-            )
+        if base_dir is None:
+            base_dir = "."
         self.base_dir = Path(base_dir)
 
     async def write_file(self, path: str, content: str) -> None:
@@ -102,22 +98,13 @@ class Arbitrium:
         Initialize Arbitrium with pre-loaded components.
 
         Args:
-            config: Loaded configuration object (must contain outputs_dir)
+            config: Loaded configuration object (outputs_dir can be None for temp directory)
             all_models: All models from config (including failed ones)
             healthy_models: Models that passed health check
             failed_models: Models that failed health check with their errors
-
-        Raises:
-            ValueError: If outputs_dir is not in config
         """
-        # Get outputs_dir from config - framework validates this
+        # Get outputs_dir from config - can be None to use temp directory
         outputs_dir = config.config_data.get("outputs_dir")
-        if not outputs_dir:
-            raise ValueError(
-                "outputs_dir is required in configuration file. "
-                "Framework does not provide default values. "
-                "Add 'outputs_dir: <path>' to your config file."
-            )
 
         self.config = config
         self._all_models = all_models
@@ -127,7 +114,9 @@ class Arbitrium:
 
         # Internal components - not exposed to users
         self._event_handler = _InternalEventHandler()
-        self._host = _InternalHost(base_dir=str(outputs_dir))
+        self._host = _InternalHost(
+            base_dir=str(outputs_dir) if outputs_dir else None
+        )
 
     @staticmethod
     def _deep_merge(

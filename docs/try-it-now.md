@@ -21,7 +21,7 @@ Experience Arbitrium Framework with actual AI models - no installation required!
 ## What You'll Experience
 
 ### ✨ Real Tournament Execution
-- 🤖 Actual API calls to GPT-4, Claude, Gemini
+- 🤖 Actual API calls to GPT, Claude, Grok
 - ⚔️ Competitive elimination rounds
 - 🧠 Knowledge Bank preserving insights
 - 🥇 Champion solution synthesis
@@ -47,14 +47,14 @@ Experience Arbitrium Framework with actual AI models - no installation required!
 ### API Keys (Required)
 You need at least **2 API keys** from:
 
-- **OpenAI** (GPT-4) - [Get key →](https://platform.openai.com/api-keys)
+- **OpenAI** (GPT) - [Get key →](https://platform.openai.com/api-keys)
 - **Anthropic** (Claude) - [Get key →](https://console.anthropic.com/)
-- **Google** (Gemini) - [Get key →](https://makersuite.google.com/app/apikey)
+- **XAI** (Grok) - [Get key →](https://console.x.ai/)
 
 !!! tip "Cost Estimate"
     - **Per tournament:** $0.50 - $2.00
     - **Test with 2-3 models** to minimize cost
-    - **Use cheaper models** (Gemini Flash) for initial testing
+    - **Use cheaper models** for initial testing
 
 ### Time Investment
 - **Setup:** 2 minutes

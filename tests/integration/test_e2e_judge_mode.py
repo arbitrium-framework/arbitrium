@@ -275,10 +275,11 @@ class TestEmergencyJudgeFallback:
             round_num=1,
         )
 
-        # Should return empty dict when judge fails
-        assert result == {}
-        # Scores should be empty when judge fails
-        assert arbitrium._comparison.evaluation_scores == {}
+        # With fallback strategy, should succeed using emergency judge or peer review
+        # instead of returning empty dict
+        assert result != {}  # Should have evaluations from fallback
+        # Scores should be present from fallback strategy
+        assert arbitrium._comparison.evaluation_scores != {}
 
 
 class TestEvaluationFailures:
