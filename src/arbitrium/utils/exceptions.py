@@ -98,3 +98,37 @@ class FileSystemError(ArbitriumError):
 
 class InputError(ArbitriumError):
     """Raised when there's an issue with user input."""
+
+
+class BudgetExceededError(ArbitriumError):
+    """Raised when tournament exceeds the configured budget."""
+
+    def __init__(
+        self,
+        message: str,
+        spent: float,
+        budget: float,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        self.spent = spent
+        self.budget = budget
+        enhanced_message = f"Budget exceeded: spent ${spent:.4f} >= limit ${budget:.4f}. {message}"
+        super().__init__(enhanced_message, *args)
+
+
+class TournamentTimeoutError(ArbitriumError):
+    """Raised when tournament exceeds the configured time limit."""
+
+    def __init__(
+        self,
+        message: str,
+        elapsed: float,
+        timeout: float,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        self.elapsed = elapsed
+        self.timeout = timeout
+        enhanced_message = f"Tournament timeout: {elapsed:.1f}s >= limit {timeout:.1f}s. {message}"
+        super().__init__(enhanced_message, *args)

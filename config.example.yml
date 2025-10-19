@@ -1,31 +1,48 @@
-question: >-
-  Put you question here.
+# Arbitrium Framework - Example Configuration
+# This is the default configuration for heterogeneous tournaments with diverse models
 
+# Question to analyze (can also be provided via CLI argument)
+question: >
+  Put your question here.
 
-# Active models for this tournament
-# All available models are defined in src/arbitrium/config/defaults/models.yml
-# Just reference the models you want to use by their key
-# You can override any setting (like temperature) if needed
+# Model configurations for heterogeneous tournament
 models:
-  gpt: {}     # Use default settings from defaults/models.yml
-  claude: {}  # Use default settings from defaults/models.yml
-  gemini: {}  # Use default settings from defaults/models.yml
+  gpt: {}
+  claude: {}
+  gemini: {}
   grok: {}
 
-# Example: Override a specific setting for a model
-# gpt:
-#   temperature: 0.8  # Override default temperature
+  # Optional: Add more models for larger tournaments
+  # grok:
+  #   provider: xai
+  #   model_name: xai/grok-2
+  #   display_name: "Grok 2"
+  #   temperature: 0.8
+  #   max_tokens: 4096
 
-# Example: Use smaller models (all defined in defaults/models.yml)
-# llama3: {}
-# mistral-1: {}
-# phi3: {}
+# Tournament configuration
+tournament:
+  # Judge model for scoring responses (can be one of the tournament models or separate)
+  judge_model: claude  # Use Claude as the judge
+  # Number of improvement rounds before elimination
+  improvement_rounds: 2
+  # Anonymize model identities during evaluation (recommended for fairness)
+  anonymize: true
+# Knowledge Bank configuration
+knowledge_bank:
+  enabled: true
+  # Maximum number of insights to preserve from each eliminated model
+  max_insights: 5
+  # Similarity threshold for deduplication (0.0-1.0, higher = more strict)
+  similarity_threshold: 0.85
+  # Model to use for extracting insights from eliminated models
+  extraction_model: claude
 
-# All other settings (retry, features, knowledge_bank, prompts, secrets)
-# are automatically loaded from src/arbitrium/config/defaults/
-
-# You can override any default setting by specifying it here:
-# features:
-#   deterministic_mode: false  # Override default
-
+# Output configuration
 outputs_dir: "."
+
+# Logging
+logging:
+  level: INFO
+  file_logging: true
+  console_logging: true

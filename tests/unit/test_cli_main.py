@@ -27,12 +27,12 @@ class TestApp:
 
     @patch("arbitrium.cli.main.parse_arguments")
     def test_get_outputs_dir_default(self, mock_parse: MagicMock) -> None:
-        """Test getting outputs directory with default value."""
+        """Test getting outputs directory with default value (None = temp dir)."""
         mock_parse.return_value = {}
 
         app = App()
 
-        assert app.outputs_dir == "."
+        assert app.outputs_dir is None
 
     @patch("arbitrium.cli.main.parse_arguments")
     def test_get_outputs_dir_custom(self, mock_parse: MagicMock) -> None:
@@ -54,9 +54,7 @@ class TestApp:
             app._fatal_error("Test error")
 
     @patch("arbitrium.cli.main.parse_arguments")
-    def test_load_config_with_fallback_success(
-        self, mock_parse: MagicMock
-    ) -> None:
+    def test_load_config_success(self, mock_parse: MagicMock) -> None:
         """Test loading config successfully."""
         mock_parse.return_value = {}
         app = App()
@@ -65,37 +63,13 @@ class TestApp:
         mock_config.load.return_value = True
 
         with patch("arbitrium.config.loader.Config", return_value=mock_config):
-            result = app._load_config_with_fallback("test_config.yml")
+            result = app._load_config("test_config.yml")
 
         assert result == mock_config
 
     @patch("arbitrium.cli.main.parse_arguments")
-    def test_load_config_with_fallback_to_default(
-        self, mock_parse: MagicMock
-    ) -> None:
-        """Test loading config with fallback to default."""
-        mock_parse.return_value = {}
-        app = App()
-
-        mock_config_fail = MagicMock()
-        mock_config_fail.load.return_value = False
-
-        mock_config_success = MagicMock()
-        mock_config_success.load.return_value = True
-
-        with patch(
-            "arbitrium.config.loader.Config",
-            side_effect=[mock_config_fail, mock_config_success],
-        ):
-            result = app._load_config_with_fallback("custom_config.yml")
-
-        assert result == mock_config_success
-
-    @patch("arbitrium.cli.main.parse_arguments")
-    def test_load_config_with_fallback_fails(
-        self, mock_parse: MagicMock
-    ) -> None:
-        """Test loading config fails with both paths."""
+    def test_load_config_fails(self, mock_parse: MagicMock) -> None:
+        """Test loading config fails."""
         mock_parse.return_value = {}
         app = App()
 
@@ -104,20 +78,7 @@ class TestApp:
 
         with patch("arbitrium.config.loader.Config", return_value=mock_config):
             with pytest.raises(FatalError):
-                app._load_config_with_fallback("custom_config.yml")
-
-    @patch("arbitrium.cli.main.parse_arguments")
-    def test_load_config_default_fails(self, mock_parse: MagicMock) -> None:
-        """Test loading default config fails."""
-        mock_parse.return_value = {}
-        app = App()
-
-        mock_config = MagicMock()
-        mock_config.load.return_value = False
-
-        with patch("arbitrium.config.loader.Config", return_value=mock_config):
-            with pytest.raises(FatalError):
-                app._load_config_with_fallback("config.yml")
+                app._load_config("custom_config.yml")
 
     @pytest.mark.asyncio
     @patch("arbitrium.cli.main.parse_arguments")
@@ -144,51 +105,6 @@ class TestApp:
 
         assert result == mock_arbitrium
         assert mock_config.config_data["outputs_dir"] == "./output"
-
-    @pytest.mark.asyncio
-    @patch("arbitrium.cli.main.parse_arguments")
-    async def test_try_create_with_fallback_success(
-        self, mock_parse: MagicMock
-    ) -> None:
-        """Test creating Arbitrium with fallback succeeds."""
-        mock_parse.return_value = {}
-        app = App()
-
-        mock_config = MagicMock()
-        mock_config.load.return_value = True
-        mock_config.config_data = {}
-
-        mock_arbitrium = MagicMock()
-
-        with patch("arbitrium.config.loader.Config", return_value=mock_config):
-            with patch(
-                "arbitrium.cli.main.Arbitrium.from_settings",
-                new_callable=AsyncMock,
-                return_value=mock_arbitrium,
-            ):
-                result = await app._try_create_with_fallback(
-                    "test_config.yml", skip_secrets=False
-                )
-
-        assert result == mock_arbitrium
-
-    @pytest.mark.asyncio
-    @patch("arbitrium.cli.main.parse_arguments")
-    async def test_try_create_with_fallback_fails(
-        self, mock_parse: MagicMock
-    ) -> None:
-        """Test creating Arbitrium with fallback fails."""
-        mock_parse.return_value = {}
-        app = App()
-
-        mock_config = MagicMock()
-        mock_config.load.return_value = False
-
-        with patch("arbitrium.config.loader.Config", return_value=mock_config):
-            with pytest.raises(FatalError):
-                await app._try_create_with_fallback(
-                    "test_config.yml", skip_secrets=False
-                )
 
     @pytest.mark.asyncio
     @patch("arbitrium.cli.main.parse_arguments")
@@ -236,7 +152,7 @@ class TestApp:
                 new_callable=AsyncMock,
                 side_effect=Exception("Test error"),
             ):
-                with pytest.raises(FatalError):
+                with pytest.raises(Exception, match="Test error"):
                     await app._create_arbitrium_from_config(
                         "config.yml", skip_secrets=False
                     )
@@ -550,6 +466,7 @@ class TestApp:
 class TestRunFromCli:
     """Tests for run_from_cli function."""
 
+    @patch("arbitrium.cli.main.parse_arguments")
     @patch("arbitrium.cli.main.colorama.init")
     @patch("arbitrium.cli.main.App")
     @patch("asyncio.run")
@@ -558,10 +475,12 @@ class TestRunFromCli:
         mock_asyncio_run: MagicMock,
         mock_app_class: MagicMock,
         mock_colorama: MagicMock,
+        mock_parse_args: MagicMock,
     ) -> None:
         """Test run_from_cli succeeds."""
         from arbitrium.cli.main import run_from_cli
 
+        mock_parse_args.return_value = {}
         mock_app = MagicMock()
         mock_app_class.return_value = mock_app
 
@@ -571,6 +490,7 @@ class TestRunFromCli:
         mock_colorama.assert_called_once()
         mock_asyncio_run.assert_called_once()
 
+    @patch("arbitrium.cli.main.parse_arguments")
     @patch("arbitrium.cli.main.colorama.init")
     @patch("arbitrium.cli.main.App")
     @patch("sys.exit")
@@ -579,10 +499,12 @@ class TestRunFromCli:
         mock_exit: MagicMock,
         mock_app_class: MagicMock,
         mock_colorama: MagicMock,
+        mock_parse_args: MagicMock,
     ) -> None:
         """Test run_from_cli with FatalError."""
         from arbitrium.cli.main import run_from_cli
 
+        mock_parse_args.return_value = {}
         mock_app = MagicMock()
         mock_app_class.return_value = mock_app
 
@@ -592,6 +514,7 @@ class TestRunFromCli:
 
         mock_exit.assert_called_once_with(1)
 
+    @patch("arbitrium.cli.main.parse_arguments")
     @patch("arbitrium.cli.main.colorama.init")
     @patch("arbitrium.cli.main.App")
     @patch("sys.exit")
@@ -600,10 +523,12 @@ class TestRunFromCli:
         mock_exit: MagicMock,
         mock_app_class: MagicMock,
         mock_colorama: MagicMock,
+        mock_parse_args: MagicMock,
     ) -> None:
         """Test run_from_cli with KeyboardInterrupt."""
         from arbitrium.cli.main import run_from_cli
 
+        mock_parse_args.return_value = {}
         mock_app = MagicMock()
         mock_app_class.return_value = mock_app
 

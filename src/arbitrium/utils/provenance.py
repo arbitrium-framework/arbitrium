@@ -54,10 +54,12 @@ class ProvenanceReport:
         md.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         md.append("")
 
-        # Question
+        # Question (fenced to prevent markdown structure breaking)
         md.append("## Initial Question")
         md.append("")
+        md.append("```")
         md.append(self.question)
+        md.append("```")
         md.append("")
 
         # Champion info
@@ -66,10 +68,12 @@ class ProvenanceReport:
         md.append(self.champion_model)
         md.append("")
 
-        # Champion solution (FULL, no truncation)
+        # Champion solution (FULL, no truncation, fenced to prevent markdown structure breaking)
         md.append("## Champion Solution")
         md.append("")
+        md.append("```markdown")
         md.append(self.champion_answer)
+        md.append("```")
         md.append("")
 
         # Separator
@@ -92,12 +96,16 @@ class ProvenanceReport:
         """
         report = {
             "tournament_id": self.timestamp,
-            "question": self.question,
-            "champion_model": self.champion_model,
-            "final_answer": self.champion_answer,
-            "phases": self._extract_phases(),
-            "eliminations": self._extract_eliminations(),
-            "cost_summary": self.tournament_data.get("cost_summary", {}),
+            "question": self._sanitize_for_json(self.question),
+            "champion_model": self._sanitize_for_json(self.champion_model),
+            "final_answer": self._sanitize_for_json(self.champion_answer),
+            "phases": self._extract_phases(),  # Already sanitized in _extract_phases
+            "eliminations": self._sanitize_for_json(
+                self._extract_eliminations()
+            ),
+            "cost_summary": self._sanitize_for_json(
+                self.tournament_data.get("cost_summary", {})
+            ),
             "generated_at": datetime.now().isoformat(),
         }
         return report
@@ -288,46 +296,170 @@ class ProvenanceReport:
         else:
             return "collaborative"
 
+    def _sanitize_for_json(self, obj: Any) -> Any:
+        """Sanitize data to ensure valid JSON serialization."""
+        if obj is None:
+            return None
+        elif isinstance(obj, dict):
+            return {
+                self._sanitize_for_json(k): self._sanitize_for_json(v)
+                for k, v in obj.items()
+            }
+        elif isinstance(obj, (list, tuple)):
+            return [self._sanitize_for_json(item) for item in obj]
+        elif isinstance(obj, str):
+            # Ensure string is valid UTF-8 and doesn't have problematic characters
+            # Python's json.dumps will handle escaping, but we clean invalid chars
+            return obj.encode("utf-8", errors="replace").decode("utf-8")
+        elif isinstance(obj, (int, float, bool)):
+            return obj
+        else:
+            # Convert other types to string
+            return str(obj)
+
+    def _extract_initial_phase(
+        self, phase_name: str, phase_data: Any
+    ) -> dict[str, Any]:
+        """Extract initial phase data."""
+        return {
+            "name": phase_name,
+            "type": "initial",
+            "responses": (
+                self._sanitize_for_json(phase_data)
+                if isinstance(phase_data, dict)
+                else {}
+            ),
+        }
+
+    def _extract_improvement_phase(
+        self, phase_name: str, phase_data: Any
+    ) -> dict[str, Any]:
+        """Extract improvement phase data."""
+        if not isinstance(phase_data, dict):
+            return {
+                "name": phase_name,
+                "type": "improvement",
+                "strategy": self._determine_strategy(phase_name),
+            }
+
+        # Check if it's structured or old format
+        if not self._has_structured_improvement_data(phase_data):
+            return {
+                "name": phase_name,
+                "type": "improvement",
+                "strategy": self._determine_strategy(phase_name),
+                "improved_answers": self._sanitize_for_json(phase_data),
+            }
+
+        # Build structured phase info
+        phase_info: dict[str, Any] = {
+            "name": phase_name,
+            "type": "improvement",
+            "strategy": self._determine_strategy(phase_name),
+        }
+
+        # Add optional fields
+        self._add_optional_field(phase_info, phase_data, "criticisms")
+        self._add_optional_field(phase_info, phase_data, "feedback")
+
+        # Add improved answers (key data)
+        improved_answers = phase_data.get(
+            "improved_answers"
+        ) or phase_data.get("enhanced_answers")
+        if improved_answers:
+            phase_info["improved_answers"] = self._sanitize_for_json(
+                improved_answers
+            )
+
+        return phase_info
+
+    def _extract_evaluation_phase(
+        self, phase_name: str, phase_data: Any
+    ) -> dict[str, Any]:
+        """Extract evaluation phase data."""
+        if not isinstance(phase_data, dict):
+            return {
+                "name": phase_name,
+                "type": "evaluation",
+                "scores": {},
+                "evaluations": {},
+                "refined_answers": {},
+            }
+
+        return {
+            "name": phase_name,
+            "type": "evaluation",
+            "scores": self._sanitize_for_json(phase_data.get("scores", {})),
+            "evaluations": self._sanitize_for_json(
+                phase_data.get("evaluations", {})
+            ),
+            "refined_answers": self._sanitize_for_json(
+                phase_data.get("refined_answers", {})
+            ),
+        }
+
+    def _has_structured_improvement_data(
+        self, phase_data: dict[str, Any]
+    ) -> bool:
+        """Check if phase data has structured improvement format."""
+        return any(
+            k in phase_data
+            for k in [
+                "criticisms",
+                "feedback",
+                "improved_answers",
+                "enhanced_answers",
+            ]
+        )
+
+    def _add_optional_field(
+        self,
+        phase_info: dict[str, Any],
+        phase_data: dict[str, Any],
+        field_name: str,
+    ) -> None:
+        """Add optional field to phase info if it exists and is not None."""
+        if field_name in phase_data and phase_data[field_name] is not None:
+            phase_info[field_name] = self._sanitize_for_json(
+                phase_data[field_name]
+            )
+
+    def _is_initial_phase(self, phase_name: str) -> bool:
+        """Check if phase is an initial phase."""
+        return "Initial" in phase_name
+
+    def _is_improvement_phase(self, phase_name: str) -> bool:
+        """Check if phase is an improvement phase."""
+        return any(
+            keyword in phase_name
+            for keyword in [
+                "Cross-Criticism",
+                "Positive Reinforcement",
+                "Collaborative",
+            ]
+        )
+
+    def _is_evaluation_phase(self, phase_name: str) -> bool:
+        """Check if phase is an evaluation phase."""
+        return "Elimination Round" in phase_name
+
     def _extract_phases(self) -> list[dict[str, Any]]:
         """Extract tournament phases from history data."""
         phases = []
         history = self.tournament_data.get("complete_tournament_history", {})
 
         for phase_name, phase_data in history.items():
-            if "Initial" in phase_name:
+            if self._is_initial_phase(phase_name):
                 phases.append(
-                    {
-                        "name": phase_name,
-                        "type": "initial",
-                        "responses": phase_data,
-                    }
+                    self._extract_initial_phase(phase_name, phase_data)
                 )
-            elif (
-                "Cross-Criticism" in phase_name
-                or "Positive Reinforcement" in phase_name
-                or "Collaborative" in phase_name
-            ):
-                phase_type = "improvement"
+            elif self._is_improvement_phase(phase_name):
                 phases.append(
-                    {
-                        "name": phase_name,
-                        "type": phase_type,
-                        "strategy": self._determine_strategy(phase_name),
-                        "criticisms": phase_data.get("criticisms"),
-                        "feedback": phase_data.get("feedback"),
-                        "improved_answers": phase_data.get("improved_answers")
-                        or phase_data.get("enhanced_answers"),
-                    }
+                    self._extract_improvement_phase(phase_name, phase_data)
                 )
-            elif "Elimination Round" in phase_name:
+            elif self._is_evaluation_phase(phase_name):
                 phases.append(
-                    {
-                        "name": phase_name,
-                        "type": "evaluation",
-                        "scores": phase_data.get("scores"),
-                        "evaluations": phase_data.get("evaluations"),
-                        "refined_answers": phase_data.get("refined_answers"),
-                    }
+                    self._extract_evaluation_phase(phase_name, phase_data)
                 )
 
         return phases

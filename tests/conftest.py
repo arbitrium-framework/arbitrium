@@ -45,10 +45,38 @@ def sample_config() -> dict[str, Any]:
             "max_insights_to_inject": 5,
         },
         "prompts": {
-            "initial": "Test initial prompt",
-            "feedback": "Test feedback prompt",
-            "improvement": "Test improvement prompt",
-            "evaluate": "Test evaluate prompt",
+            "initial": {
+                "content": "Test initial prompt",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "initial_response",
+                },
+            },
+            "feedback": {
+                "content": "Test feedback prompt",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "feedback",
+                },
+            },
+            "improvement": {
+                "content": "Test improvement prompt",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "improvement",
+                },
+            },
+            "evaluate": {
+                "content": "Test evaluate prompt",
+                "metadata": {
+                    "version": "1.0",
+                    "type": "instruction",
+                    "phase": "evaluation",
+                },
+            },
         },
     }
 

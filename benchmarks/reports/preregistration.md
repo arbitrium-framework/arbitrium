@@ -7,6 +7,22 @@
 
 ---
 
+## Note on Model Availability
+
+**⚠️ Important:** This research uses advanced model versions that may not be publicly available:
+- `gpt-5` - Advanced OpenAI model (beta/research access)
+- `claude-sonnet-4-5-20250929` - Advanced Anthropic model (beta/research access)
+- `gemini-2.5-pro` - Advanced Google model (beta/research access)
+- `xai/grok-4-latest` - xAI Grok model
+
+**For Public Reproduction:**
+To replicate this study with publicly available models, use `config.public.yml` with free local models via Ollama:
+- `phi3`, `phi4-mini`, `gemma3:4b`, `qwen3:4b`
+
+While results may differ due to model capability differences, the tournament methodology and statistical analysis remain identical.
+
+---
+
 ## 1. Research Question
 
 Does a tournament-based multi-model synthesis system (Arbitrium) improve reasoning accuracy compared to single-model baselines under fixed compute budgets?

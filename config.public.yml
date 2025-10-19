@@ -1,0 +1,56 @@
+# Arbitrium Framework - Public Demo Configuration
+# This configuration uses FREE local models via Ollama - NO API KEYS REQUIRED!
+#
+# Prerequisites:
+#   1. Install Ollama: https://ollama.com/download
+#   2. Pull the models:
+#      ollama pull phi3
+#      ollama pull gemma3:4b
+#      ollama pull qwen3:4b
+#      ollama pull phi4-mini
+#
+# These models run locally on your machine and require approximately 8-16GB RAM
+# to run the full tournament (4 models). For lower memory systems, reduce to 2-3 models.
+
+# Question to analyze (can also be provided via CLI argument)
+question: >
+  What are the key considerations when designing a scalable web application
+  that needs to handle millions of users?
+
+# Model configurations for heterogeneous tournament
+# Note: Empty {} uses defaults from src/arbitrium/config/defaults.py
+models:
+  phi3: {}          # Phi-3 Mini 3.8B - Microsoft's efficient model
+  gemma3-4b: {}     # Gemma 3 4B - Google's open model
+  qwen3-4b: {}      # Qwen 3 4B - Alibaba's multilingual model
+  phi4-mini: {}     # Phi-4 Mini 3.8B - Microsoft's latest small model
+
+# Tournament configuration
+tournament:
+  # Judge model for scoring responses (using phi3 as judge)
+  judge_model: phi3
+  # Number of improvement rounds before elimination
+  improvement_rounds: 2
+  # Anonymize model identities during evaluation (recommended for fairness)
+  anonymize: true
+
+# Knowledge Bank configuration
+knowledge_bank:
+  enabled: true
+  # Maximum number of insights to preserve from each eliminated model
+  max_insights: 5
+  # Similarity threshold for deduplication (0.0-1.0, higher = more strict)
+  similarity_threshold: 0.85
+  # Model to use for extracting insights from eliminated models
+  extraction_model: phi3
+
+# Output configuration
+# null = output in current directory (default)
+# Or specify a custom path like "./outputs"
+outputs_dir: null
+
+# Logging
+logging:
+  level: INFO
+  file_logging: false    # Disabled by default - no log files created
+  console_logging: true  # Show progress in console

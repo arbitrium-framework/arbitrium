@@ -121,6 +121,43 @@ def build_context_parts(record: logging.LogRecord) -> list[str]:
 class JSONFormatter(logging.Formatter):
     """Formatter that outputs logs as JSON with correlation IDs."""
 
+    def _sanitize_value(self, value: object, max_length: int = 500) -> object:
+        """
+        Sanitize a value for JSON logging.
+
+        Truncates long strings and ensures JSON-safe values.
+
+        Args:
+            value: The value to sanitize
+            max_length: Maximum length for string values
+
+        Returns:
+            Sanitized value safe for JSON serialization
+        """
+        if isinstance(value, str):
+            # Truncate long strings
+            if len(value) > max_length:
+                return (
+                    value[:max_length]
+                    + f"... (truncated, {len(value)} total chars)"
+                )
+            return value
+        elif isinstance(value, (int, float, bool, type(None))):
+            return value
+        elif isinstance(value, (list, tuple)):
+            return [self._sanitize_value(item, max_length) for item in value]
+        elif isinstance(value, dict):
+            return {
+                k: self._sanitize_value(v, max_length)
+                for k, v in value.items()
+            }
+        else:
+            # Convert other types to string representation
+            str_repr = str(value)
+            if len(str_repr) > max_length:
+                return str_repr[:max_length] + "... (truncated)"
+            return str_repr
+
     def format(self, record: logging.LogRecord) -> str:
         """Format the log record as JSON."""
         # Build the base log entry
@@ -169,13 +206,15 @@ class JSONFormatter(logging.Formatter):
                     "exc_text",
                     "stack_info",
                 ]:
-                    log_entry[key] = value
+                    # Sanitize value to prevent JSON issues and bloat
+                    log_entry[key] = self._sanitize_value(value)
 
         # Add exception info if present
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)
 
-        return json.dumps(log_entry, ensure_ascii=False)
+        # Use ensure_ascii=False for unicode support, default=str for non-serializable objects
+        return json.dumps(log_entry, ensure_ascii=False, default=str)
 
 
 class ContextFilter(logging.Filter):
@@ -368,6 +407,75 @@ class ContextualLogger:
         """Log critical message with context."""
         self.logger.critical(
             message, exc_info=exc_info, extra=kwargs, stacklevel=2
+        )
+
+    def log_prompt(
+        self, prompt: str, model: str | None = None, **kwargs: object
+    ) -> None:
+        """
+        Log a prompt in a structured format.
+
+        In JSON mode, this creates a structured log entry.
+        In text mode, logs concisely without separators.
+
+        Args:
+            prompt: The prompt text
+            model: Optional model name
+            **kwargs: Additional fields to include in the log
+        """
+        extra = {
+            "event_type": "prompt",
+            "prompt": prompt,
+            "prompt_length": len(prompt),
+            **kwargs,
+        }
+        if model:
+            extra["model"] = model
+
+        self.logger.debug(
+            f"Prompt ({len(prompt)} chars)"
+            + (f" to {model}" if model else ""),
+            extra=extra,
+            stacklevel=2,
+        )
+
+    def log_response(
+        self,
+        response: str,
+        model: str | None = None,
+        cost: float | None = None,
+        **kwargs: object,
+    ) -> None:
+        """
+        Log a model response in a structured format.
+
+        In JSON mode, this creates a structured log entry.
+        In text mode, logs concisely without separators.
+
+        Args:
+            response: The response text
+            model: Optional model name
+            cost: Optional cost of the API call
+            **kwargs: Additional fields to include in the log
+        """
+        extra = {
+            "event_type": "response",
+            "response": response,
+            "response_length": len(response),
+            **kwargs,
+        }
+        if model:
+            extra["model"] = model
+        if cost is not None:
+            extra["cost"] = cost
+
+        cost_str = f", ${cost:.4f}" if cost is not None else ""
+        self.logger.debug(
+            f"Response ({len(response)} chars)"
+            + (f" from {model}" if model else "")
+            + cost_str,
+            extra=extra,
+            stacklevel=2,
         )
 
 

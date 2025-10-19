@@ -12,19 +12,15 @@ from typing import Any
 from arbitrium.logging import get_contextual_logger
 from arbitrium.models.base import BaseModel, ModelResponse, run_with_retry
 from arbitrium.utils.constants import PLACEHOLDER_RESPONSES
+from arbitrium.utils.exceptions import (
+    BudgetExceededError,
+    TournamentTimeoutError,
+)
 
 from .anonymizer import ModelAnonymizer
 from .helpers import indent_text, strip_meta_commentary
 from .knowledge_bank import EnhancedKnowledgeBank
-from .prompt_templates import (
-    LOG_EVALUATOR_RESPONSE,
-    LOG_FEEDBACK,
-    LOG_JUDGE_EVALUATION,
-    LOG_PROMPT,
-    LOG_RESPONSE,
-    RESPONSE_WRAPPER,
-)
-from .prompting import PromptBuilder
+from .prompts import LOG_EVALUATOR_RESPONSE, PromptBuilder, PromptFormatter
 from .report import ReportGenerator
 from .scorer import ScoreExtractor
 
@@ -58,6 +54,66 @@ class HostEnvironment(ABC):
     def get_secret(self, key: str) -> str | None:
         """Get secret from environment."""
         pass
+
+
+class BudgetGuard:
+    """Guards against excessive tournament costs and runtime.
+
+    Monitors tournament spending and elapsed time, raising exceptions
+    when configured limits are exceeded. This prevents runaway costs
+    and ensures tournaments complete within reasonable timeframes.
+
+    Args:
+        max_cost: Maximum allowed cost in USD (default: 5.0)
+        max_time: Maximum allowed time in seconds (default: 900 = 15 minutes)
+
+    Example:
+        ```python
+        guard = BudgetGuard(max_cost=5.0, max_time=600)
+        guard.check(spent=2.5, elapsed=300)  # OK
+        guard.check(spent=6.0, elapsed=300)  # Raises BudgetExceededError
+        ```
+    """
+
+    def __init__(self, max_cost: float = 5.0, max_time: float = 900.0) -> None:
+        """Initialize budget guard with cost and time limits."""
+        self.budget = max_cost
+        self.timeout = max_time
+        self.start_time = datetime.now()
+
+    def check(self, spent: float, elapsed: float | None = None) -> None:
+        """Check if budget or time limits have been exceeded.
+
+        Args:
+            spent: Total cost spent so far in USD
+            elapsed: Elapsed time in seconds (optional, auto-calculated if None)
+
+        Raises:
+            BudgetExceededError: If spent >= max_cost
+            TournamentTimeoutError: If elapsed >= max_time
+        """
+        # Check budget
+        if spent >= self.budget:
+            raise BudgetExceededError(
+                "Tournament stopped to prevent further costs.",
+                spent=spent,
+                budget=self.budget,
+            )
+
+        # Check timeout
+        if elapsed is None:
+            elapsed = (datetime.now() - self.start_time).total_seconds()
+
+        if elapsed >= self.timeout:
+            raise TournamentTimeoutError(
+                "Tournament stopped due to time limit.",
+                elapsed=elapsed,
+                timeout=self.timeout,
+            )
+
+    def reset(self) -> None:
+        """Reset the start time (useful for multi-tournament runs)."""
+        self.start_time = datetime.now()
 
 
 class TournamentRunner:
@@ -194,10 +250,23 @@ class TournamentRunner:
                 initial_question, self.comp.previous_answers[-1], round_num
             )
             if not evaluations:
-                self.logger.error(
-                    f"No evaluations in round {round_num}. Stopping elimination."
-                )
-                break
+                # Check if we still have models after evaluation failures
+                if len(self.comp.active_model_keys) == 0:
+                    self.logger.error(
+                        f"No evaluations in round {round_num} and no active models remain. Tournament failed."
+                    )
+                    break
+                elif len(self.comp.active_model_keys) == 1:
+                    self.logger.warning(
+                        f"No evaluations in round {round_num}, but 1 model remains. Declaring champion."
+                    )
+                    break
+                else:
+                    self.logger.warning(
+                        f"No evaluations in round {round_num}, but {len(self.comp.active_model_keys)} models remain. "
+                        f"This indicates an evaluation system failure. Declaring current leader as champion."
+                    )
+                    break
 
             self.comp.evaluation_history.append(
                 {
@@ -291,10 +360,39 @@ class TournamentRunner:
         eliminated_response = self.comp.previous_answers[-1].get(
             eliminated_model
         )
+
+        # Extract insights from eliminated model
+        insights_preserved: list[str] = []
         if eliminated_response:
             await self.comp.knowledge_bank.extract_and_add_insights(
                 eliminated_response, eliminated_model, round_num
             )
+            # Retrieve the insights that were just added
+            insights_preserved = (
+                self.comp.knowledge_bank.get_insights_for_model(
+                    eliminated_model, round_num
+                )
+            )
+            self.logger.info(
+                f"Preserved {len(insights_preserved)} insights from {eliminated_model}"
+            )
+
+        # Get variance and consensus data for this elimination
+        score_variance = None
+        elimination_confidence = "unknown"
+        if hasattr(self.comp, "model_score_variances"):
+            variance_data = self.comp.model_score_variances.get(
+                eliminated_model
+            )
+            if variance_data:
+                score_variance = variance_data["stdev"]
+                # Low variance = high confidence in elimination
+                if score_variance < 0.5:
+                    elimination_confidence = "high"
+                elif score_variance < 1.0:
+                    elimination_confidence = "medium"
+                else:
+                    elimination_confidence = "low"
 
         # Store elimination info with reason and score for provenance
         elimination_info: dict[str, object] = {
@@ -304,7 +402,17 @@ class TournamentRunner:
                 self.comp, "elimination_reason", "Lowest score in evaluation"
             ),
             "score": getattr(self.comp, "elimination_score", None),
+            "score_variance": score_variance,
+            "elimination_confidence": elimination_confidence,
+            "insights_preserved": insights_preserved,  # Now populated!
         }
+
+        # Add self-scoring bias if available
+        if hasattr(self.comp, "self_scoring_biases"):
+            bias = self.comp.self_scoring_biases.get(eliminated_model)
+            if bias is not None:
+                elimination_info["self_scoring_bias"] = round(bias, 2)
+
         self.comp.eliminated_models.append(elimination_info)  # type: ignore[arg-type]
 
         model_key_to_remove = next(
@@ -434,7 +542,8 @@ class ModelComparison:
         self.anonymizer = ModelAnonymizer(deterministic_mode)
         self.score_extractor = ScoreExtractor()
         self.report_generator = ReportGenerator(self.host)
-        self.prompt_builder = PromptBuilder(self.prompts)
+        self.formatter = PromptFormatter()
+        self.prompt_builder = PromptBuilder(self.prompts, self.formatter)
 
         self.active_model_keys = list(models.keys())
         self.judge_model_key = self._identify_and_remove_judge()
@@ -582,8 +691,8 @@ class ModelComparison:
             )
 
             # Log the full prompt at DEBUG level
-            log_message = LOG_PROMPT.format(
-                model=model.display_name, content=prompt
+            log_message = self.formatter.format_log_message(
+                "PROMPT", model.display_name, prompt
             )
             self.logger.debug(indent_text(log_message))
 
@@ -646,10 +755,10 @@ class ModelComparison:
                 display_name = self.anon_mapping.get(
                     model_key, model.display_name
                 )
-                log_message = LOG_RESPONSE.format(
-                    response_type=context_for_logging.upper(),
-                    model=display_name,
-                    content=response.content,
+                # Format as [RESPONSE_TYPE] FROM model
+                label = f"[{context_for_logging.upper()}] RESPONSE FROM {display_name}"
+                log_message = self.formatter.wrap_section(
+                    label, response.content
                 )
                 self.logger.info(indent_text(log_message))
 
@@ -729,6 +838,15 @@ class ModelComparison:
         context_for_logging: str,
     ) -> bool:
         """Check if tournament can continue with current results."""
+        # For PEER_EVAL, allow fallback to judge mode even if no valid results
+        # The evaluation phase will handle fallback logic
+        if context_for_logging == "PEER_EVAL":
+            if not valid_results:
+                self.logger.warning(
+                    "No valid peer evaluation responses. Will try judge fallback."
+                )
+            return True
+
         if not valid_results:
             self.logger.critical(
                 f"No valid responses for {context_for_logging} from any models."
@@ -882,10 +1000,8 @@ class ModelComparison:
                 feedback_text = response.content
                 feedback_context[target_model][reviewer_name] = feedback_text
 
-                log_message = LOG_FEEDBACK.format(
-                    reviewer=reviewer_name,
-                    target=target_model,
-                    content=feedback_text,
+                log_message = self.formatter.format_feedback_log(
+                    reviewer_name, target_model, feedback_text
                 )
                 self.logger.debug(indent_text(log_message))
                 self.logger.info(
@@ -995,7 +1111,7 @@ class ModelComparison:
             self.logger.info(
                 f"Using dedicated judge model for evaluation: {self.judge_model_key}"
             )
-            return await self._run_judge_evaluation(
+            return await self._run_judge_evaluation_with_fallback(
                 self.judge_model_key, initial_question, responses
             )
         else:
@@ -1037,13 +1153,84 @@ class ModelComparison:
 
             return result
 
+    async def _run_judge_evaluation_with_fallback(
+        self,
+        primary_judge_key: str,
+        initial_question: str,
+        collaborative_responses: dict[str, str],
+    ) -> dict[str, str]:
+        """Runs judge evaluation with fallback strategy.
+
+        Tries judges in order:
+        1. Primary judge (from config)
+        2. Emergency judge (largest model from active participants)
+        3. Peer review (all models evaluate each other)
+
+        Args:
+            primary_judge_key: The primary judge model key
+            initial_question: The question being evaluated
+            collaborative_responses: Responses to evaluate
+
+        Returns:
+            Dictionary of evaluations
+        """
+        # Try primary judge first
+        result = await self._run_judge_evaluation(
+            primary_judge_key, initial_question, collaborative_responses
+        )
+
+        # If primary judge succeeded, return results
+        if result and self.evaluation_scores:
+            return result
+
+        # Primary judge failed, try fallback strategies
+        self.logger.warning(
+            f"⚠️  Primary judge {self.models[primary_judge_key].display_name} failed. "
+            "Attempting fallback strategies..."
+        )
+
+        # Fallback 1: Try emergency judge (largest model)
+        emergency_judge = self._select_largest_model_as_judge()
+        if emergency_judge and emergency_judge != primary_judge_key:
+            self.logger.info(
+                f"🔄 Fallback 1: Trying emergency judge "
+                f"{self.models[emergency_judge].display_name}"
+            )
+            result = await self._run_judge_evaluation(
+                emergency_judge, initial_question, collaborative_responses
+            )
+
+            if result and self.evaluation_scores:
+                self.logger.info("✅ Emergency judge evaluation succeeded")
+                return result
+
+            self.logger.warning("⚠️  Emergency judge also failed")
+
+        # Fallback 2: Peer review as last resort
+        self.logger.info(
+            "🔄 Fallback 2: Falling back to peer review mode "
+            "(all models evaluate each other)"
+        )
+        return await self._run_peer_evaluation(
+            initial_question, collaborative_responses
+        )
+
     async def _run_judge_evaluation(
         self,
         judge_model_key: str,
         initial_question: str,
         collaborative_responses: dict[str, str],
     ) -> dict[str, str]:
-        """Runs the evaluation using a single, designated judge model."""
+        """Runs the evaluation using a single, designated judge model.
+
+        Args:
+            judge_model_key: The judge model key
+            initial_question: The question being evaluated
+            collaborative_responses: Responses to evaluate
+
+        Returns:
+            Dictionary of evaluations, empty dict if judge fails
+        """
         judge_display_name = self.models[judge_model_key].display_name
         self.logger.info(
             f"Using {judge_display_name} as the judge.",
@@ -1058,7 +1245,7 @@ class ModelComparison:
             self.logger.info(f"  {anon_name} (actually {real_name})")
 
         formatted_responses = "\n\n".join(
-            RESPONSE_WRAPPER.format(name=resp_name, response=resp_text)
+            self.formatter.format_response_wrapper(resp_name, resp_text)
             for resp_name, resp_text in shuffled_responses.items()
         )
 
@@ -1076,8 +1263,8 @@ class ModelComparison:
         )
 
         if response.is_error():
-            self.logger.error(
-                f"Error getting judge evaluation from {judge_model_key}: {response.error}"
+            self.logger.warning(
+                f"Judge {judge_display_name} evaluation failed: {response.error}"
             )
             self.evaluation_scores = {}
             self.all_evaluations = {}
@@ -1088,8 +1275,8 @@ class ModelComparison:
             evaluation_text, reverse_shuffle_mapping
         )
 
-        log_message = LOG_JUDGE_EVALUATION.format(
-            judge=judge_display_name, content=decoded_eval
+        log_message = self.formatter.format_judge_evaluation(
+            judge_display_name, decoded_eval
         )
         self.logger.info(indent_text(log_message))
 
@@ -1169,7 +1356,7 @@ class ModelComparison:
                 evaluator_anon_name
             )
             formatted_responses = "\n\n".join(
-                RESPONSE_WRAPPER.format(name=resp_name, response=resp_text)
+                self.formatter.format_response_wrapper(resp_name, resp_text)
                 for resp_name, resp_text in responses_to_evaluate.items()
             )
             code_names_to_evaluate = list(responses_to_evaluate.keys())
@@ -1316,9 +1503,30 @@ class ModelComparison:
         """Calculate final score (median or penalty) for a model."""
         if scores:
             median = statistics.median(scores)
-            self.logger.info(
-                f"  → Median score for {model_display_name}: {median:.2f} (from {len(scores)} valid evaluations)"
-            )
+
+            # Calculate score variance for transparency
+            if len(scores) > 1:
+                variance = statistics.variance(scores)
+                stdev = statistics.stdev(scores)
+
+                # Store variance for this model (for elimination confidence)
+                if not hasattr(self, "model_score_variances"):
+                    self.model_score_variances = {}
+                self.model_score_variances[model_display_name] = {
+                    "variance": variance,
+                    "stdev": stdev,
+                    "num_judges": len(scores),
+                }
+
+                self.logger.info(
+                    f"  → Median score for {model_display_name}: {median:.2f} "
+                    f"(stdev={stdev:.2f}, from {len(scores)} judges)"
+                )
+            else:
+                self.logger.info(
+                    f"  → Median score for {model_display_name}: {median:.2f} (from 1 judge only)"
+                )
+
             self._display_model_score(
                 model_display_name, median, "Median score"
             )
@@ -1329,8 +1537,76 @@ class ModelComparison:
             )
             return 0.0
 
+    def _normalize_judge_scores(
+        self, judge_scores: dict[str, float], judge_name: str
+    ) -> dict[str, float]:
+        """Normalize scores from a single judge to account for grading bias.
+
+        Uses z-score normalization to handle harsh/generous graders:
+        - Harsh judge: gives low scores to everyone (mean=6) -> normalized up
+        - Generous judge: gives high scores to everyone (mean=9) -> normalized down
+
+        Args:
+            judge_scores: Raw scores from this judge {model_name: score}
+            judge_name: Name of the judge (for logging)
+
+        Returns:
+            Normalized scores {model_name: normalized_score} in [1, 10] range
+        """
+        if not judge_scores or len(judge_scores) < 2:
+            # Need at least 2 scores to normalize
+            return judge_scores
+
+        scores_list = list(judge_scores.values())
+        mean_score = statistics.mean(scores_list)
+
+        # Calculate std dev, handle edge case where all scores are the same
+        if len(set(scores_list)) == 1:
+            # All scores identical - no bias to correct
+            return judge_scores
+
+        std_dev = statistics.stdev(scores_list)
+
+        # Avoid division by zero
+        if std_dev == 0:
+            return judge_scores
+
+        # Z-score normalization, then rescale to [1, 10]
+        normalized = {}
+        z_scores = []
+
+        for _model_name, score in judge_scores.items():
+            z_score = (score - mean_score) / std_dev
+            z_scores.append(z_score)
+
+        # Rescale z-scores to [1, 10] range
+        # Typical z-scores are in [-3, +3], but we'll use actual min/max
+        if z_scores:
+            min_z = min(z_scores)
+            max_z = max(z_scores)
+            z_range = max_z - min_z
+
+            if z_range > 0:
+                for model_name, score in judge_scores.items():
+                    z_score = (score - mean_score) / std_dev
+                    # Map [min_z, max_z] -> [1, 10]
+                    normalized_score = (
+                        1.0 + ((z_score - min_z) / z_range) * 9.0
+                    )
+                    normalized[model_name] = normalized_score
+            else:
+                # All z-scores the same (shouldn't happen)
+                normalized = dict.fromkeys(judge_scores.keys(), 5.5)
+
+        # Log the normalization
+        self.logger.info(
+            f"Normalized {judge_name}'s scores (mean={mean_score:.2f}, std={std_dev:.2f})"
+        )
+
+        return normalized
+
     def _aggregate_peer_review_scores(self) -> dict[str, float]:
-        """Aggregate scores from peer review format."""
+        """Aggregate scores from peer review format with judge normalization."""
         self.logger.info("Aggregating scores from peer-review format.")
         aggregated_scores: dict[str, float] = {}
 
@@ -1343,12 +1619,101 @@ class ModelComparison:
                 f"⚠️  {len(invalid_evaluators)} evaluator(s) provided invalid evaluations and were excluded: {', '.join(invalid_evaluators)}"
             )
 
+        # First pass: Normalize each judge's scores to account for grading bias
+        normalized_evaluation_scores = {}
+        self_scoring_biases = {}  # Track self-scoring bias for transparency
+
+        for evaluator in valid_evaluators:
+            raw_scores = self.evaluation_scores[evaluator]
+            if isinstance(raw_scores, dict):
+                # Extract numeric scores only
+                numeric_scores = {}
+                for model_name, score in raw_scores.items():
+                    if isinstance(score, (int, float)):
+                        validated = self._normalize_score(
+                            float(score), evaluator
+                        )
+                        if validated is not None:
+                            numeric_scores[model_name] = validated
+
+                # Detect self-scoring bias BEFORE normalization
+                if evaluator in numeric_scores:
+                    self_score = numeric_scores[evaluator]
+                    other_scores = [
+                        s for m, s in numeric_scores.items() if m != evaluator
+                    ]
+
+                    if other_scores:
+                        avg_others = statistics.mean(other_scores)
+                        bias = self_score - avg_others
+
+                        # Store bias for provenance
+                        self_scoring_biases[evaluator] = bias
+
+                        if bias > 1.5:  # Scores self 1.5+ points higher
+                            self.logger.warning(
+                                f"⚠️  Potential self-scoring bias detected: {evaluator} gave itself "
+                                f"{self_score:.1f} vs {avg_others:.1f} avg to others (bias: +{bias:.1f})"
+                            )
+                        elif (
+                            bias < -1.5
+                        ):  # Scores self 1.5+ points lower (humble)
+                            self.logger.info(
+                                f"{evaluator} scored itself lower than others: "
+                                f"{self_score:.1f} vs {avg_others:.1f} avg (bias: {bias:.1f})"
+                            )
+                        else:
+                            # Log neutral self-scoring for transparency
+                            self.logger.debug(
+                                f"{evaluator} self-score: {self_score:.1f}, others avg: {avg_others:.1f} (bias: {bias:+.1f})"
+                            )
+
+                # Normalize this judge's scores
+                if numeric_scores:
+                    normalized_scores = self._normalize_judge_scores(
+                        numeric_scores, evaluator
+                    )
+                    normalized_evaluation_scores[evaluator] = normalized_scores
+
+        # Store self-scoring bias data for provenance/transparency
+        if self_scoring_biases:
+            self.self_scoring_biases = self_scoring_biases
+            self.logger.info(
+                f"📊 Self-scoring bias summary: {len(self_scoring_biases)} models scored themselves"
+            )
+            for model, bias in sorted(
+                self_scoring_biases.items(),
+                key=lambda x: abs(x[1]),
+                reverse=True,
+            ):
+                bias_str = f"{bias:+.2f}"
+                if abs(bias) > 1.5:
+                    self.logger.info(f"   • {model}: {bias_str} (significant)")
+                else:
+                    self.logger.debug(f"   • {model}: {bias_str}")
+
+        # Second pass: Collect normalized scores for each model
         for model_display_name in [
             self.anon_mapping[k] for k in self.active_model_keys
         ]:
-            scores = self._collect_scores_for_model(
-                model_display_name, valid_evaluators
-            )
+            scores: list[float] = []
+            self.logger.info(f"Collecting scores for {model_display_name}:")
+
+            for evaluator in valid_evaluators:
+                if evaluator in normalized_evaluation_scores:
+                    normalized_scores = normalized_evaluation_scores[evaluator]
+                    if model_display_name in normalized_scores:
+                        norm_score = normalized_scores[model_display_name]
+                        scores.append(norm_score)
+
+                        # Mark self-scores explicitly for transparency
+                        is_self_score = evaluator == model_display_name
+                        score_type = " (self-score)" if is_self_score else ""
+
+                        self.logger.info(
+                            f"  - {evaluator} gave {model_display_name} a normalized score of {norm_score:.2f}{score_type}"
+                        )
+
             aggregated_scores[model_display_name] = self._finalize_model_score(
                 model_display_name, scores
             )
@@ -1648,25 +2013,26 @@ class ModelComparison:
         phase_2_criticisms = self._get_phase_2_criticisms()
         phase_2_feedback = self._get_phase_2_feedback()
 
-        phase_2_data = {}
+        phase_2_data: dict[str, Any] = {}
+
+        # Always include the improved answers - this is the key data
+        improved_answers = all_previous_answers[1].copy()
+
         if phase_2_criticisms:
             phase_2_data["criticisms"] = phase_2_criticisms
-            phase_2_data["improved_answers"] = all_previous_answers[1].copy()
+            phase_2_data["improved_answers"] = improved_answers
             return {
                 "Phase 2: Cross-Criticism & Self-Improvement": phase_2_data
             }
         elif phase_2_feedback:
             phase_2_data["feedback"] = phase_2_feedback
-            phase_2_data["enhanced_answers"] = all_previous_answers[1].copy()
+            phase_2_data["enhanced_answers"] = improved_answers
             return {
                 "Phase 2: Positive Reinforcement & Strength Amplification": phase_2_data
             }
         else:
-            return {
-                "Phase 2: Collaborative Analysis": all_previous_answers[
-                    1
-                ].copy()
-            }
+            # Collaborative mode - just the improved answers, no extra fields
+            return {"Phase 2: Collaborative Analysis": improved_answers}
 
     def _add_round_evaluations(
         self,

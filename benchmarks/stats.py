@@ -28,10 +28,10 @@ def mcnemar(b01: int, b10: int) -> Tuple[float, float]:
 
     # Exact two-sided p-value via binomial tail with p=0.5
     k = min(b01, b10)
-    # P(X <= k) + P(X >= n-k) for two-tailed test
+    # P(X <= k) + P(X >= n-k) for exact two-tailed test
     cdf = sum(comb(n, i) for i in range(0, k + 1)) / (2**n)
     sf = sum(comb(n, i) for i in range(n - k, n + 1)) / (2**n)
-    p_value = min(1.0, 2 * min(cdf, sf))
+    p_value = min(1.0, cdf + sf)
 
     return chi2, p_value
 

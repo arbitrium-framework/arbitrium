@@ -1,4 +1,4 @@
-.PHONY: help fmt lint test bench bench-ablation docs clean install dev build publish
+.PHONY: help fmt lint test bench bench-quick bench-ablation docs clean install dev build publish
 
 PY_SOURCES = src/ benchmarks/ tests/
 
@@ -19,15 +19,30 @@ lint:  ## Run all linters
 
 test:  ## Run tests with coverage
 	@echo "Running tests..."
-	pytest tests/ -v --cov=src/arbitrium --cov-report=term-missing --cov-branch
+	python -m pytest tests/ -v --cov=src/arbitrium --cov-report=term-missing --cov-branch
 
 test-quick:  ## Run tests without coverage
-	pytest tests/ -v
+	python -m pytest tests/ -v
 
-bench:  ## Run benchmarks
-	@echo "Run benchmarks with: python -m benchmarks.micro_benchmark --config config.yml"
+test-coverage-enforce:  ## Run tests with strict coverage requirements for core modules
+	@echo "Running tests with strict coverage enforcement..."
+	python -m pytest tests/ -v \
+		--cov=src/arbitrium/core/tournament.py \
+		--cov=src/arbitrium/models/base.py \
+		--cov-report=term-missing \
+		--cov-branch \
+		--cov-fail-under=60
+	@echo "✓ Core modules meet 60% coverage requirement"
 
-bench-ablation:  ## Run full ablation benchmark to validate core hypotheses
+bench:  ## Run standard benchmarks (BBH + GPQA)
+	@echo "Running standard benchmarks..."
+	python -m benchmarks.standard_benchmarks --benchmark both --config config.example.yml
+
+bench-quick:  ## Run quick validation benchmark
+	@echo "Running quick validation..."
+	python -m benchmarks.micro_benchmark --config config.example.yml
+
+bench-ablation:  ## Run ablation benchmark to validate core hypotheses
 	@echo "Running ablation benchmark..."
 	python -m benchmarks.ablation_benchmark --config config.example.yml
 

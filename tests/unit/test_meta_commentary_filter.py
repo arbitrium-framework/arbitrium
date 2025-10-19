@@ -2,7 +2,9 @@
 """Test the meta-commentary filtering functionality."""
 
 
-from arbitrium.core.comparison import _strip_meta_commentary
+from arbitrium.core.helpers import (
+    strip_meta_commentary as _strip_meta_commentary,
+)
 from arbitrium.logging import get_contextual_logger, setup_logging
 
 setup_logging(enable_file_logging=False)

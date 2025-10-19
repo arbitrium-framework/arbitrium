@@ -24,8 +24,7 @@ if TYPE_CHECKING:
     from arbitrium.config.loader import Config
 
 # Constants for configuration
-DEFAULT_CONFIG_FILE = "config.yml"
-CONFIG_LOAD_ERROR_MSG = "Failed to load configuration from config.yml"
+DEFAULT_CONFIG_FILE = "config.example.yml"
 ARBITRIUM_NOT_INITIALIZED_MSG = "Arbitrium not initialized"
 
 
@@ -37,11 +36,14 @@ class App:
     handling CLI-specific concerns like argument parsing and question input.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, args: dict[str, object] | None = None) -> None:
         """
         Initialize the application.
+
+        Args:
+            args: Parsed CLI arguments. If None, will parse from sys.argv.
         """
-        self.args = parse_arguments()
+        self.args = args if args is not None else parse_arguments()
         self.logger = get_contextual_logger("arbitrium.cli")
         self.outputs_dir = self._get_outputs_dir()
         self.arbitrium: Arbitrium | None = None
@@ -53,22 +55,24 @@ class App:
         self.logger.error(message)
         raise FatalError(message)
 
-    def _get_outputs_dir(self) -> str:
+    def _get_outputs_dir(self) -> str | None:
         """
         Get outputs directory from CLI arguments.
 
-        CLI provides default value "." (current directory).
+        Returns None if not specified, which uses current directory.
         Directory will be created automatically when files are saved.
         """
-        outputs_dir_arg = self.args.get("outputs_dir", ".")
-        outputs_dir: str = str(outputs_dir_arg)
-        return outputs_dir
+        outputs_dir_arg = self.args.get("outputs_dir")
+        if outputs_dir_arg is None:
+            return None
+        return str(outputs_dir_arg)
 
-    def _load_config_with_fallback(self, config_path: str) -> "Config":
+    def _load_config(self, config_path: str) -> "Config":
         """
-        Load config from path with fallback to default config.
+        Load config from specified path.
 
         Returns loaded Config object or raises FatalError.
+        No fallback - user must provide valid config path.
         """
         from arbitrium.config.loader import Config
 
@@ -76,19 +80,12 @@ class App:
         if config_obj.load():
             return config_obj
 
-        # Try fallback if not using default config
-        if config_path != DEFAULT_CONFIG_FILE:
-            self.logger.warning(
-                f"Config file '{config_path}' not found, falling back to {DEFAULT_CONFIG_FILE}"
-            )
-            config_obj = Config(DEFAULT_CONFIG_FILE)
-            if config_obj.load():
-                return config_obj
-            self._fatal_error(CONFIG_LOAD_ERROR_MSG)
-        else:
-            self._fatal_error(
-                f"Failed to load configuration from {config_path}"
-            )
+        # Config file not found or invalid - fail with clear error
+        self._fatal_error(
+            f"Failed to load configuration from '{config_path}'. "
+            f"Please ensure the file exists and is valid YAML. "
+            f"Use --config to specify a different config file."
+        )
 
         # This line is never reached due to _fatal_error raising exception
         return config_obj
@@ -97,51 +94,28 @@ class App:
         self, config_obj: "Config", skip_secrets: bool
     ) -> Arbitrium:
         """Try to create Arbitrium instance from a config object."""
-        config_obj.config_data["outputs_dir"] = self.outputs_dir
+        # Only override outputs_dir if explicitly provided via CLI
+        if self.outputs_dir is not None:
+            config_obj.config_data["outputs_dir"] = self.outputs_dir
         return await Arbitrium.from_settings(
             settings=config_obj.config_data,
             skip_secrets=skip_secrets,
         )
 
-    async def _try_create_with_fallback(
-        self, config_path: str, skip_secrets: bool
-    ) -> Arbitrium:
-        """Try to create Arbitrium with default config as fallback."""
-        self.logger.warning(
-            f"Failed to initialize with {config_path}, trying {DEFAULT_CONFIG_FILE}"
-        )
-        try:
-            config_obj = self._load_config_with_fallback(DEFAULT_CONFIG_FILE)
-            return await self._try_create_arbitrium_from_config_obj(
-                config_obj, skip_secrets
-            )
-        except Exception:
-            self._fatal_error(CONFIG_LOAD_ERROR_MSG)
-        # This line is never reached due to _fatal_error raising exception
-        raise RuntimeError("Unreachable code")
-
     async def _create_arbitrium_from_config(
         self, config_path: str, skip_secrets: bool
     ) -> Arbitrium:
         """
-        Create Arbitrium instance from config with fallback.
+        Create Arbitrium instance from config.
 
         Returns Arbitrium instance or raises FatalError.
+        No fallback - user must provide a valid config file.
         """
-        config_obj = self._load_config_with_fallback(config_path)
+        config_obj = self._load_config(config_path)
 
-        try:
-            return await self._try_create_arbitrium_from_config_obj(
-                config_obj, skip_secrets
-            )
-        except Exception as e:
-            # Try fallback if not using default config
-            if config_path == DEFAULT_CONFIG_FILE:
-                self._fatal_error(f"Failed to load configuration: {e}")
-
-            return await self._try_create_with_fallback(
-                config_path, skip_secrets
-            )
+        return await self._try_create_arbitrium_from_config_obj(
+            config_obj, skip_secrets
+        )
 
     def _filter_requested_models(self) -> None:
         """
@@ -179,14 +153,28 @@ class App:
         if not self.arbitrium.is_ready:
             self._fatal_error("❌ No models passed health check")
 
+    def _reconfigure_logging_from_config(self) -> None:
+        """Reconfigure logging based on loaded config settings."""
+        if self.arbitrium is None:
+            return
+
+        from arbitrium.logging import setup_logging
+
+        # Reconfigure logging with config settings
+        # Note: File logging always uses JSON format (standard behavior)
+        setup_logging(
+            debug=bool(self.args.get("debug", False)),
+            verbose=bool(self.args.get("verbose", False)),
+        )
+
     async def _initialize_arbitrium(self) -> None:
         """
         Initialize Arbitrium from config file.
 
         CLI injects outputs_dir into config before passing to framework.
         """
-        config_path = self.args.get("config", DEFAULT_CONFIG_FILE)
-        skip_secrets = self.args.get("no_secrets", False)
+        config_path = str(self.args.get("config", DEFAULT_CONFIG_FILE))
+        skip_secrets = bool(self.args.get("no_secrets", False))
 
         self.logger.info(f"Loading configuration from {config_path}")
 
@@ -194,6 +182,9 @@ class App:
         self.arbitrium = await self._create_arbitrium_from_config(
             config_path, skip_secrets
         )
+
+        # Reconfigure logging with settings from config
+        self._reconfigure_logging_from_config()
 
         # Filter models if specific models were requested
         self._filter_requested_models()
@@ -270,15 +261,21 @@ def run_from_cli() -> None:
     """
     Entry point for the command-line script.
     """
-    # Initialize logging FIRST to ensure consistent formatting from the start
+    # Parse args first to get debug/verbose flags for logging setup
     from arbitrium.logging import setup_logging
 
-    setup_logging()
+    args = parse_arguments()
+
+    # Initialize logging with CLI flags FIRST to ensure consistent formatting from the start
+    setup_logging(
+        debug=args.get("debug", False),
+        verbose=args.get("verbose", False),
+    )
 
     colorama.init(autoreset=True)
 
     try:
-        app = App()
+        app = App(args)
         asyncio.run(app.run())
     except FatalError:
         sys.exit(1)

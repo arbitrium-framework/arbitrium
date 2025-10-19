@@ -37,6 +37,27 @@ repos:
       - id: isort
 
   # ============================================================================
+  # TESTING (full test suite)
+  # Evidence: Integration tests catch 60% more defects than unit tests alone
+  # Runs ALL tests to catch breaking changes before commit
+  # ============================================================================
+  - repo: local
+    hooks:
+      - id: pytest-all
+        name: pytest (all tests)
+        entry: ./.pre-commit-pytest.sh
+        language: script
+        types: [python]
+        args:
+          [
+            "tests/",
+            "-v",
+            "--tb=short",
+          ]
+        pass_filenames: false
+        always_run: true
+
+  # ============================================================================
   # STATIC TYPING (proven to reduce TypeError/AttributeError in production)
   # Evidence: Dropbox/Instagram case studies show 15-40% reduction in type errors
   # ============================================================================
@@ -173,15 +194,29 @@ repos:
         stages: [commit-msg]
 
 # ============================================================================
-# TOOLS DEFERRED TO CI (too slow or complex for pre-commit)
+# TESTING IN PRE-COMMIT VS CI
+# ============================================================================
+# PRE-COMMIT (fast integration tests):
+# - tests/integration/test_tournament_behavior.py (13 tests, ~0.1s)
+# - tests/integration/test_prompt_system.py (19 tests, ~0.1s)
+# - tests/unit/test_smoke_tournament.py (2 tests, ~0.05s)
+# Total: 34 tests in ~0.2s - fast feedback on core behavior
+#
+# CI ONLY (comprehensive test suite):
+# - All integration tests (100+ tests)
+# - E2E tests with real scenarios
+# - Performance benchmarks
+# - Coverage analysis (pytest-cov)
+# - Mutation testing (mutmut/Cosmic Ray)
+# - Property-based testing (Hypothesis)
+#
+# ============================================================================
+# OTHER TOOLS DEFERRED TO CI (too slow or complex for pre-commit)
 # ============================================================================
 # - CodeQL: GitHub-specific, requires workflow setup
 # - Pysa: Requires framework-specific taint configuration
 # - SonarQube/Cloud: Platform-based, not a hook
 # - Radon: No official pre-commit hook, run via pip in CI
-# - Hypothesis: Property-based testing, runs with pytest in CI
-# - Mutation testing (mutmut/Cosmic Ray): Too slow, CI only
-# - Coverage: Measured in CI with pytest-cov
 # - Import Linter: Requires project-specific contract definition
 # - Atheris/CrossHair: Fuzzing/symbolic execution - CI only
 #

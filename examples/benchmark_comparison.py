@@ -40,12 +40,18 @@ async def main():
     # ------------------------------------------------------------------
     # APPROACH 1: Single Model (fastest, cheapest)
     # ------------------------------------------------------------------
+    # Use first available model
+    first_model_key = next(iter(arbitrium.healthy_models.keys()))
+    first_model = arbitrium.healthy_models[first_model_key]
+
     print("=" * 80)
-    print("🤖 APPROACH 1: Single Model (GPT-5)")
+    print(f"🤖 APPROACH 1: Single Model ({first_model.display_name})")
     print("=" * 80)
 
     start = time.time()
-    single_response = await arbitrium.run_single_model("gpt", question)
+    single_response = await arbitrium.run_single_model(
+        first_model_key, question
+    )
     single_time = time.time() - start
 
     print(f"\n✅ Completed in {single_time:.1f}s")
@@ -103,7 +109,7 @@ async def main():
     print(f"\n{'Approach':<30} {'Time':>10} {'Cost':>10} {'Models':>10}")
     print("-" * 80)
     print(
-        f"{'1. Single Model (GPT-5)':<30} {single_time:>9.1f}s ${single_response.cost:>8.4f} {1:>10}"
+        f"{'1. Single Model (' + first_model.display_name + ')':<30} {single_time:>9.1f}s ${single_response.cost:>8.4f} {1:>10}"
     )
     print(
         f"{'2. All Models (Independent)':<30} {all_time:>9.1f}s ${all_cost:>8.4f} {len(all_responses):>10}"

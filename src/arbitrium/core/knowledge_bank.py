@@ -13,7 +13,7 @@ from ..utils.constants import DEFAULT_MAX_INSIGHTS, PLACEHOLDER_RESPONSES
 from ..utils.response_validation import detect_apology_or_refusal
 
 if TYPE_CHECKING:
-    from .comparison import ModelComparison
+    from .tournament import ModelComparison
 
 
 class EnhancedKnowledgeBank:
@@ -449,6 +449,33 @@ Extracted insights (one per line, starting with dash):
         return [
             self.insights_db[insight_id] for insight_id in self.insight_ids
         ]
+
+    def get_insights_for_model(
+        self, model_name: str, round_num: int | None = None
+    ) -> list[str]:
+        """Get insights extracted from a specific model.
+
+        Args:
+            model_name: The model to get insights from
+            round_num: Optional round number to filter by
+
+        Returns:
+            List of insight texts from this model
+        """
+        if not self.insights_db:
+            return []
+
+        insights = []
+        for insight_id in self.insight_ids:
+            insight_data = self.insights_db[insight_id]
+            if insight_data["source_model"] == model_name:
+                if (
+                    round_num is None
+                    or insight_data["source_round"] == round_num
+                ):
+                    insights.append(insight_data["text"])
+
+        return insights
 
     def get_top_insights(
         self, num_insights: int | None = None

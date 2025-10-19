@@ -9,8 +9,11 @@ from typing import Any
 
 import pytest
 
-from arbitrium.core.comparison import ModelComparison
-from arbitrium.core.tournament import EventHandler, HostEnvironment
+from arbitrium.core.tournament import (
+    EventHandler,
+    HostEnvironment,
+    ModelComparison,
+)
 from arbitrium.models.base import BaseModel, ModelResponse
 
 

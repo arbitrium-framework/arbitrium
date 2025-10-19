@@ -104,6 +104,7 @@ async def run_single_model_on_benchmark(
 
     results = []
     correct = 0
+    total_cost = 0.0
     start_time = datetime.now()
 
     for i, question_item in enumerate(questions, 1):
@@ -142,6 +143,9 @@ Your answer:
 
             if is_correct:
                 correct += 1
+
+            # Track cost
+            total_cost += model_response.cost
 
             results.append(
                 {
@@ -185,7 +189,7 @@ Your answer:
         "total": len(questions),
         "accuracy": accuracy,
         "duration_seconds": duration,
-        "cost_estimate": 0.0,  # Local models are free; update if using paid APIs
+        "cost_estimate": total_cost,  # Actual cost from API calls
         "preds": preds,
         "actuals": actuals,
         "ids": list(range(len(questions))),
@@ -291,9 +295,14 @@ def load_bbh_questions(num_per_task: int = 5) -> list[dict[str, Any]]:
 
     questions = []
 
+    # Trusted dataset source - hardcoded, not user input
+    BBH_DATASET = "lukaemon/bbh"
+
     for task in BBH_TASKS:
         try:
-            dataset = load_dataset("lukaemon/bbh", task)  # nosec B615
+            dataset = load_dataset(
+                BBH_DATASET, task
+            )  # nosec B615 - trusted source
 
             # Take subset
             for i, example in enumerate(dataset["test"]):
@@ -325,9 +334,14 @@ def load_gpqa_questions(num_questions: int = 20) -> list[dict[str, Any]]:
     """Load questions from GPQA (Graduate-Level Questions)."""
     logger.info("Loading GPQA dataset...")
 
+    # Trusted dataset source - hardcoded, not user input
+    GPQA_DATASET = "Idavidrein/gpqa"
+
     try:
         # GPQA Diamond subset (highest quality)
-        dataset = load_dataset("Idavidrein/gpqa", "gpqa_diamond")  # nosec B615
+        dataset = load_dataset(
+            GPQA_DATASET, "gpqa_diamond"
+        )  # nosec B615 - trusted source
 
         questions = []
         for i, example in enumerate(dataset["train"]):

@@ -83,21 +83,14 @@ jupyter notebook examples/interactive_demo.ipynb
 You'll need API keys for the AI models you want to use:
 
 **Minimum:** At least 2 of the following:
-- 🔑 **OpenAI API Key** (for GPT-4)
+- 🔑 **OpenAI API Key** (for GPT)
   - Get it: https://platform.openai.com/api-keys
-  - Cost: ~$0.20-0.50 per tournament
 
 - 🔑 **Anthropic API Key** (for Claude)
   - Get it: https://console.anthropic.com/
-  - Cost: ~$0.30-0.60 per tournament
 
-- 🔑 **Google API Key** (for Gemini)
-  - Get it: https://makersuite.google.com/app/apikey
-  - Cost: ~$0.10-0.30 per tournament
-
-**Optional:**
 - 🔑 **XAI API Key** (for Grok)
-  - Get it: https://x.ai/api
+  - Get it: https://console.x.ai/
 
 ### Budget
 - **Estimated cost per tournament:** $0.50 - $2.00

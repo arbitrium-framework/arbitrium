@@ -47,6 +47,8 @@ wheels/
 .installed.cfg
 MANIFEST
 
+TODO*.md
+
 # --- Virtual Environments ---
 .env
 .venv
@@ -55,6 +57,7 @@ venv/
 ENV/
 VENV/
 .python-version
+mutants
 
 # --- Python Dependencies & Lock Files ---
 # These are often regenerated and can cause merge conflicts.
@@ -136,6 +139,10 @@ arbitrium_provenance*.json
 arbitrium_*_provenance.json
 arbitrium_*_champion_solution.md
 arbitrium_*_complete_history.json
+
+# Response cache database
+arbitrium_cache.db
+*.cache.db
 
 # Demo notebook outputs
 arbitrium_demo_outputs/

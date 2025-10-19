@@ -5,7 +5,6 @@ from typing import Any
 
 import yaml
 
-from arbitrium.config.defaults import DEFAULT_COMPRESSION_MODEL
 from arbitrium.logging import get_contextual_logger
 
 # Module-level logger
@@ -19,7 +18,7 @@ def _get_validation_schema() -> dict[str, dict[str, Any]]:
         "retry": {"required": True, "type": dict},
         "features": {"required": True, "type": dict},
         "prompts": {"required": True, "type": dict},
-        "outputs_dir": {"required": True, "type": str, "non_empty": True},
+        "outputs_dir": {"required": True, "allow_none": True},
     }
 
 
@@ -45,7 +44,13 @@ def _check_section_non_empty(
     errors: list[str],
 ) -> bool:
     """Check if section is non-empty when required."""
-    if rules.get("non_empty") and not config_data.get(section):
+    section_value = config_data.get(section)
+
+    # Allow None if explicitly permitted
+    if rules.get("allow_none") and section_value is None:
+        return True
+
+    if rules.get("non_empty") and not section_value:
         error_msg = f"Section '{section}' is empty but must contain values"
         logger.error(error_msg)
         errors.append(error_msg)
@@ -281,8 +286,11 @@ class Config:
 
     def _merge_with_models_handling(self, user_config: dict[str, Any]) -> None:
         """Merge user config with special handling for models section."""
-        if "models" not in user_config:
-            # No models in user config - use all defaults
+        # If no models section, or models is explicitly empty, use all defaults
+        if "models" not in user_config or not user_config.get("models"):
+            logger.debug(
+                "No models specified in config - using all default models"
+            )
             self.config_data = self._deep_merge(self.config_data, user_config)
             return
 
@@ -376,8 +384,9 @@ class Config:
                 "llm_compression", True
             )
         if "compression_model" not in model_config:
+            # None means auto-select model with highest context window
             model_config["compression_model"] = features.get(
-                "compression_model", DEFAULT_COMPRESSION_MODEL
+                "compression_model", None
             )
 
         result: dict[str, Any] = model_config

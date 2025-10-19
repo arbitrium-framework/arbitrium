@@ -234,6 +234,105 @@ async def run_condition_D(
     }
 
 
+async def select_best_baseline(
+    condition_a_results: dict[str, Any], arbitrium: Arbitrium, question: str
+) -> tuple[str, dict[str, float]]:
+    """
+    Evaluates all Condition A responses with the same judge used for tournaments
+    and selects the best performing model as the baseline.
+
+    This ensures the baseline is the actual best single model, not an arbitrary choice.
+
+    Args:
+        condition_a_results: Results from Condition A (single model responses)
+        arbitrium: Arbitrium instance (to get a judge model)
+        question: Original question
+
+    Returns:
+        Tuple of (best_model_key, all_scores_dict)
+    """
+    logger.info("=" * 80)
+    logger.info("BASELINE SELECTION: Evaluating all single models")
+    logger.info("=" * 80)
+
+    # Select judge model (prefer Claude or GPT-5)
+    judge_model_key = None
+    for preferred in ["claude", "gpt"]:
+        if preferred in arbitrium.healthy_models:
+            judge_model_key = preferred
+            break
+    if not judge_model_key:
+        judge_model_key = next(iter(arbitrium.healthy_models.keys()))
+
+    logger.info(
+        f"Using {arbitrium.healthy_models[judge_model_key].full_display_name} as judge"
+    )
+
+    scores = {}
+    total_eval_cost = 0.0
+
+    # Evaluate each model's response
+    for model_key, result in condition_a_results["results"].items():
+        eval_prompt = f"""
+You are an expert evaluator judging strategic business analysis responses.
+
+Original Question:
+{question}
+
+Response to evaluate:
+{result['content']}
+
+Evaluate this response on the following criteria (1-10 scale):
+1. **Depth of Analysis**: How thoroughly does it examine the problem?
+2. **Evidence & Reasoning**: How well-supported are the arguments?
+3. **Practical Applicability**: How actionable is the advice?
+4. **Risk Awareness**: Does it identify potential pitfalls?
+5. **Clarity**: Is it well-structured and easy to understand?
+
+Provide:
+- Overall Score (1-10, where 10 is excellent)
+- Brief justification (2-3 sentences)
+
+Format: Score: X/10 - [Justification]
+"""
+
+        judge_response = await arbitrium.run_single_model(
+            judge_model_key, eval_prompt
+        )
+        total_eval_cost += judge_response.cost
+
+        # Parse score
+        import re
+
+        pattern = r"Score:\s*(\d+(?:\.\d+)?)"
+        match = re.search(pattern, judge_response.content)
+        if match:
+            score = float(match.group(1))
+        else:
+            # Fallback: look for any number followed by /10
+            pattern = r"(\d+(?:\.\d+)?)\s*/\s*10"
+            match = re.search(pattern, judge_response.content)
+            score = (
+                float(match.group(1)) if match else 5.0
+            )  # Default to middle
+
+        scores[model_key] = score
+        logger.info(
+            f"  {result['display_name']}: {score:.1f}/10 (eval cost: ${judge_response.cost:.4f})"
+        )
+
+    # Select best model
+    best_model_key = max(scores.items(), key=lambda x: x[1])[0]
+    best_score = scores[best_model_key]
+
+    logger.info(
+        f"\n✓ Best baseline model: {condition_a_results['results'][best_model_key]['display_name']} ({best_score:.1f}/10)"
+    )
+    logger.info(f"Total evaluation cost: ${total_eval_cost:.4f}\n")
+
+    return best_model_key, scores
+
+
 async def evaluate_results(
     all_results: list[dict[str, Any]], arbitrium: Arbitrium, question: str
 ) -> dict[str, Any]:
@@ -466,8 +565,18 @@ async def main() -> None:
     results_A = await run_condition_A(arbitrium_main, args.question)
     all_results.append(results_A)
 
-    # Condition B: Best model + CoT (use first model as "best" - could be enhanced)
-    best_model_key = next(iter(arbitrium_main.healthy_models.keys()))
+    # Select best baseline model using same judge as tournament
+    best_model_key, baseline_scores = await select_best_baseline(
+        results_A, arbitrium_main, args.question
+    )
+
+    # Store baseline evaluation results
+    results_A["baseline_evaluation"] = {
+        "best_model": best_model_key,
+        "scores": baseline_scores,
+    }
+
+    # Condition B: Best model + CoT (using properly evaluated best model)
     results_B = await run_condition_B(
         arbitrium_main, args.question, best_model_key
     )
@@ -532,6 +641,24 @@ async def main() -> None:
         f.write("## Test Question\n\n")
         f.write(f"```\n{args.question}\n```\n\n")
         f.write("---\n\n")
+
+        # Baseline selection
+        if "baseline_evaluation" in all_results[0]:
+            f.write("## Baseline Selection\n\n")
+            baseline_eval = all_results[0]["baseline_evaluation"]
+            best_key = baseline_eval["best_model"]
+            best_display = all_results[0]["results"][best_key]["display_name"]
+            f.write(f"**Selected Baseline:** {best_display}\n\n")
+            f.write("All single model scores (evaluated by judge):\n\n")
+            for model_key, score in sorted(
+                baseline_eval["scores"].items(),
+                key=lambda x: x[1],
+                reverse=True,
+            ):
+                display = all_results[0]["results"][model_key]["display_name"]
+                marker = "⭐" if model_key == best_key else "  "
+                f.write(f"- {marker} {display}: {score:.1f}/10\n")
+            f.write("\n---\n\n")
 
         # Summary of conditions
         f.write("## Conditions Tested\n\n")
