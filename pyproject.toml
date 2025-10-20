@@ -17,7 +17,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "litellm~=1.77.1",
+    "litellm>=1.77.1,<1.79.0",
     "pyyaml~=6.0",
     "colorama~=0.4.6",
     "aiohttp~=3.12.0",
