@@ -1,0 +1,207 @@
+version: "1.0"
+name: "Debate Arena"
+description: "Opposing viewpoints argue a controversial topic, followed by rebuttals and judge synthesis"
+
+nodes:
+  - id: topic
+    type: simple/text
+    position: { x: 100, y: 250 }
+    properties:
+      texts:
+        - >
+          Should artificial general intelligence (AGI) development be paused
+          until we have better alignment techniques and international governance
+          frameworks?
+      separator: "\n"
+
+  - id: pro_opening
+    type: simple/llm
+    position: { x: 450, y: 100 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.8
+      max_tokens: 600
+      system_prompt: >
+        You are Dr. Sarah Mitchell, a former AI safety researcher who left a
+        major tech company due to ethical concerns. You're passionate,
+        articulate, and sometimes emotional when discussing existential risks.
+        You argue FOR pausing AGI development. Use vivid examples, appeal to
+        precautionary principles, and cite the risks of racing without
+        guardrails. Your style is compelling and urgent - you genuinely
+        believe humanity's future is at stake.
+
+  - id: con_opening
+    type: simple/llm
+    position: { x: 450, y: 400 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.8
+      max_tokens: 600
+      system_prompt: >
+        You are Dr. Marcus Zhou, an AI researcher and entrepreneur who
+        believes in accelerating progress responsibly. You're logical,
+        optimistic, and data-driven. You argue AGAINST pausing AGI
+        development. Point out the costs of delay (medical breakthroughs,
+        climate solutions), the impossibility of global coordination, and the
+        competitive dynamics that make pausing counterproductive. Your style
+        is measured and rational - you believe progress is the safest path.
+
+  - id: template_rebuttals
+    type: simple/template
+    position: { x: 700, y: 250 }
+    properties:
+      template: >
+        PRO ARGUMENT (Dr. Mitchell - For Pause):\n{var1}\n\nCON ARGUMENT (Dr.
+        Zhou - Against Pause):\n{var2}\n\n---\nNow prepare your rebuttal
+        addressing the strongest points made by your opponent.
+
+  - id: pro_rebuttal
+    type: simple/llm
+    position: { x: 950, y: 100 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.8
+      max_tokens: 400
+      system_prompt: >
+        You are Dr. Sarah Mitchell continuing the debate. Respond directly to
+        Dr. Zhou's arguments. Acknowledge valid points but explain why they
+        don't outweigh the risks. Stay passionate but engage substantively
+        with the counterarguments. End with your strongest closing point for
+        why a pause is necessary.
+
+  - id: con_rebuttal
+    type: simple/llm
+    position: { x: 950, y: 400 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.8
+      max_tokens: 400
+      system_prompt: >
+        You are Dr. Marcus Zhou continuing the debate. Respond directly to Dr.
+        Mitchell's arguments. Acknowledge the genuine concerns but explain
+        practical alternatives to a full pause. Stay rational and propose
+        constructive middle-ground solutions. End with your strongest closing
+        point for continued development with safeguards.
+
+  - id: final_template
+    type: simple/template
+    position: { x: 1200, y: 250 }
+    properties:
+      template: |
+        # DEBATE TRANSCRIPT
+
+        ## Opening Statements
+
+        ### Pro (Dr. Mitchell):
+        {var1}
+
+        ### Con (Dr. Zhou):
+        {var2}
+
+        ## Rebuttals
+
+        ### Pro Rebuttal:
+        {var3}
+
+        ### Con Rebuttal:
+        {var4}
+
+        ---
+
+        As the debate judge, analyze both sides fairly. Identify the
+        strongest arguments from each perspective, note logical fallacies
+        or weak points, and provide your assessment of which side made the
+        more compelling case overall. End with key insights that transcend
+        the binary framing.
+
+  - id: judge
+    type: simple/llm
+    position: { x: 1450, y: 250 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.4
+      max_tokens: 700
+      system_prompt: >
+        You are Professor Diana Okafor, a philosopher of technology and ethics
+        with no stake in the AI industry. You're known for fair, nuanced
+        analysis that respects both sides while cutting through rhetoric to
+        substance. Judge this debate on argument quality, evidence, and
+        logical consistency - not on your personal opinion. Highlight what
+        each side got right and wrong, and offer insights that neither side
+        fully captured.
+
+  - id: verdict
+    type: simple/text
+    position: { x: 1700, y: 250 }
+    properties:
+      texts: []
+      separator: "\n"
+
+edges:
+  - source: topic
+    target: pro_opening
+    sourceHandle: output_text
+    targetHandle: prompt
+
+  - source: topic
+    target: con_opening
+    sourceHandle: output_text
+    targetHandle: prompt
+
+  - source: pro_opening
+    target: template_rebuttals
+    sourceHandle: response
+    targetHandle: var1
+
+  - source: con_opening
+    target: template_rebuttals
+    sourceHandle: response
+    targetHandle: var2
+
+  - source: template_rebuttals
+    target: pro_rebuttal
+    sourceHandle: text
+    targetHandle: prompt
+
+  - source: template_rebuttals
+    target: con_rebuttal
+    sourceHandle: text
+    targetHandle: prompt
+
+  - source: pro_opening
+    target: final_template
+    sourceHandle: response
+    targetHandle: var1
+
+  - source: con_opening
+    target: final_template
+    sourceHandle: response
+    targetHandle: var2
+
+  - source: pro_rebuttal
+    target: final_template
+    sourceHandle: response
+    targetHandle: var3
+
+  - source: con_rebuttal
+    target: final_template
+    sourceHandle: response
+    targetHandle: var4
+
+  - source: final_template
+    target: judge
+    sourceHandle: text
+    targetHandle: prompt
+
+  - source: judge
+    target: verdict
+    sourceHandle: response
+    targetHandle: input_text
+
+outputs:
+  - verdict
