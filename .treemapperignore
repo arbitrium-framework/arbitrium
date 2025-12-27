@@ -1,0 +1,12 @@
+.*
+CITATION.cff
+LICENSE
+NOTICE
+sonar-project.properties
+tests
+examples
+CLAUDE.md
+CONTRIBUTING.md
+SECURITY.md
+TRADEMARK.md
+test_*

@@ -1,0 +1,180 @@
+version: "1.0"
+name: "Expert Panel Discussion"
+description: "Multiple domain experts analyze a problem from their unique perspectives, then synthesize insights"
+
+nodes:
+  - id: problem
+    type: simple/text
+    position: { x: 100, y: 300 }
+    properties:
+      texts:
+        - >
+          How should a city of 2 million people prepare for climate change over
+          the next 30 years? Consider infrastructure, economy, social systems,
+          and technology.
+      separator: "\n"
+
+  - id: scientist
+    type: simple/llm
+    position: { x: 450, y: 100 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.7
+      max_tokens: 500
+      system_prompt: >
+        You are Dr. Elena Vasquez, a renowned climate scientist with 25 years
+        of research experience. You think in terms of data, models, and
+        long-term environmental trends. You're passionate about evidence-based
+        policy but sometimes frustrated by political inaction. Speak from your
+        expertise about climate projections, tipping points, and ecosystem
+        impacts. Be specific with numbers and timelines where possible.
+
+  - id: economist
+    type: simple/llm
+    position: { x: 450, y: 250 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.7
+      max_tokens: 500
+      system_prompt: >
+        You are Professor James Chen, an urban economist specializing in
+        sustainable development and green transitions. You analyze everything
+        through cost-benefit analysis and market incentives. You believe
+        economic instruments (carbon pricing, green bonds, incentive
+        structures) are the most effective tools for change. Your style is
+        measured and rational - you believe progress is the safest path.
+
+  - id: engineer
+    type: simple/llm
+    position: { x: 450, y: 400 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.7
+      max_tokens: 500
+      system_prompt: >
+        You are Maria Santos, a civil engineer with expertise in resilient
+        infrastructure and smart cities. You think in terms of systems,
+        redundancy, and practical implementation. You've designed flood
+        barriers, upgraded power grids, and retrofitted buildings. You focus
+        on what can actually be built, maintained, and scaled. You're
+        detail-oriented and sometimes impatient with vague proposals.
+
+  - id: sociologist
+    type: simple/llm
+    position: { x: 450, y: 550 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.7
+      max_tokens: 500
+      system_prompt: >
+        You are Dr. Amara Okonkwo, a sociologist studying climate justice and
+        community resilience. You focus on how climate change
+        disproportionately affects marginalized communities and how solutions
+        must center equity. You think about social cohesion, displacement,
+        mental health, and community-led adaptation. You often challenge other
+        experts to consider who benefits and who bears the burden of proposed
+        solutions.
+
+  - id: merge_perspectives
+    type: simple/template
+    position: { x: 800, y: 300 }
+    properties:
+      template: |
+        EXPERT PANEL RESPONSES:
+
+        ## Climate Scientist:
+        {var1}
+
+        ## Urban Economist:
+        {var2}
+
+        ## Infrastructure Engineer:
+        {var3}
+
+        ## Community Sociologist:
+        {var4}
+
+        ---
+        As a panel moderator, synthesize these diverse expert perspectives
+        into a coherent, actionable framework. Identify areas of agreement,
+        productive tensions, and gaps that need further discussion.
+
+  - id: moderator
+    type: simple/llm
+    position: { x: 1150, y: 300 }
+    properties:
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.5
+      max_tokens: 800
+      system_prompt: >
+        You are a skilled facilitator who synthesizes diverse expert opinions
+        into actionable insights. Your job is to find common ground, highlight
+        valuable disagreements, and create a practical roadmap that
+        incorporates multiple perspectives. Be fair to all viewpoints while
+        pushing toward concrete recommendations.
+
+  - id: final_report
+    type: simple/text
+    position: { x: 1500, y: 300 }
+    properties:
+      texts: []
+      separator: "\n"
+
+edges:
+  - source: problem
+    target: scientist
+    sourceHandle: output_text
+    targetHandle: prompt
+
+  - source: problem
+    target: economist
+    sourceHandle: output_text
+    targetHandle: prompt
+
+  - source: problem
+    target: engineer
+    sourceHandle: output_text
+    targetHandle: prompt
+
+  - source: problem
+    target: sociologist
+    sourceHandle: output_text
+    targetHandle: prompt
+
+  - source: scientist
+    target: merge_perspectives
+    sourceHandle: response
+    targetHandle: var1
+
+  - source: economist
+    target: merge_perspectives
+    sourceHandle: response
+    targetHandle: var2
+
+  - source: engineer
+    target: merge_perspectives
+    sourceHandle: response
+    targetHandle: var3
+
+  - source: sociologist
+    target: merge_perspectives
+    sourceHandle: response
+    targetHandle: var4
+
+  - source: merge_perspectives
+    target: moderator
+    sourceHandle: text
+    targetHandle: prompt
+
+  - source: moderator
+    target: final_report
+    sourceHandle: response
+    targetHandle: input_text
+
+outputs:
+  - final_report

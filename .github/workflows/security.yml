@@ -1,0 +1,64 @@
+name: Security Scans
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  # ============================================================================
+  # Bandit Python Security Scanner
+  # ============================================================================
+  bandit:
+    name: Bandit Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install bandit[toml]
+
+      - name: Run Bandit
+        run: |
+          bandit -r src/ -f json -o bandit-results.json || true
+          bandit -r src/ -f txt -o bandit-results.txt || true
+
+      - name: Upload Bandit results
+        uses: actions/upload-artifact@v6
+        with:
+          name: bandit-results
+          path: |
+            bandit-results.json
+            bandit-results.txt
+
+  # ============================================================================
+  # Semgrep Security Scanner
+  # ============================================================================
+  semgrep:
+    name: Semgrep Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/javascript
+            p/typescript
+            p/security-audit
