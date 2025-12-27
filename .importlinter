@@ -1,0 +1,46 @@
+[importlinter]
+root_package = arbitrium
+include_external_packages = False
+
+# Clean Architecture Layer Contracts
+# Dependency direction: interfaces -> application -> adapters -> domain -> ports -> support
+
+[importlinter:contract:domain-independence]
+name = Domain layer must not depend on infrastructure
+type = forbidden
+source_modules =
+    arbitrium.domain
+forbidden_modules =
+    arbitrium.adapters
+    arbitrium.interfaces
+    arbitrium.application
+# workflow.nodes is application-level orchestration code (creates LLM instances)
+# TODO: move to application layer in future refactoring
+ignore_imports =
+    arbitrium.domain.workflow.nodes.generation_node -> arbitrium.adapters.llm.factory
+    arbitrium.domain.workflow.nodes.evaluation_node -> arbitrium.adapters.llm.factory
+    arbitrium.domain.workflow.nodes.llm_node -> arbitrium.adapters.llm.factory
+    arbitrium.domain.workflow.nodes.llm_node -> arbitrium.adapters.llm.registry
+
+[importlinter:contract:ports-independence]
+name = Ports layer must be pure interfaces
+type = forbidden
+source_modules =
+    arbitrium.ports
+forbidden_modules =
+    arbitrium.adapters
+    arbitrium.interfaces
+    arbitrium.application
+    arbitrium.domain
+
+[importlinter:contract:support-independence]
+name = Support layer must be reusable utilities
+type = forbidden
+source_modules =
+    arbitrium.support
+forbidden_modules =
+    arbitrium.adapters
+    arbitrium.interfaces
+    arbitrium.application
+    arbitrium.domain
+    arbitrium.ports

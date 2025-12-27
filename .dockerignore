@@ -1,0 +1,133 @@
+# Git and version control
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Environment files (all variants)
+.env
+.env.*
+!.env.example
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing and coverage
+.coverage
+.coverage.*
+*.cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+test-results/
+coverage.xml
+
+# Documentation
+/site/
+docs/
+*.md
+!README.md
+!CLAUDE.md
+
+# CI/CD
+.github/
+.pre-commit-config.yaml
+
+# Logs
+*.log
+logs/
+
+# Outputs and generated files
+outputs/
+my_reports/
+benchmark_results/
+benchmarks/
+*.benchmark.json
+arbitrium_logs*.log
+arbitrium_champion_*.md
+arbitrium_provenance*.md
+arbitrium_provenance*.json
+arbitrium_*_provenance.json
+arbitrium_*_champion_solution.md
+arbitrium_*_complete_history.json
+
+# Cache databases
+arbitrium_cache.db
+*.cache.db
+
+# Temporary files
+*.tmp
+*.bak
+.treemapperignore
+
+# Configuration (mount at runtime)
+config.yml
+!config.example.yml
+
+# Docker
+.dockerignore
+
+# Tree mapper output
+directory_tree.yaml
+
+# Makefile
+Makefile
+
+# Mutation testing
+.mutmut-cache
+mutants/
+
+# Claude and AI tools
+.claude/
+*.claude
+
+
+# SSH keys (prevent accidental exposure)
+*id_rsa*
+*id_ed25519*
+*.pem
+*.key
+
+# Private directory
+private/
+
+# Secrets baseline
+.secrets.baseline

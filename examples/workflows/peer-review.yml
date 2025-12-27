@@ -1,0 +1,162 @@
+version: "1.0"
+name: "Peer Review"
+description: "Academic peer review workflow with multiple researchers"
+
+nodes:
+  - id: question
+    type: simple/text
+    position: { x: 100, y: 100 }
+    properties:
+      pages: [["What is dark matter"]]
+      current_page: 0
+      mode: append
+      hidden: false
+
+  - id: llm_researcher1
+    type: simple/llm
+    position: { x: 100, y: 250 }
+    properties:
+      name: "Tech Optimist"
+      provider: ollama
+      model_name: ollama/yi:9b
+      temperature: 0.7
+      max_tokens: 600
+      system_prompt: >
+        You are an optimistic AI researcher who sees tremendous potential in
+        LLMs. You focus on benefits: productivity gains, accessibility,
+        democratization of knowledge. You acknowledge risks but believe
+        they're manageable with proper governance.
+
+  - id: llm_researcher2
+    type: simple/llm
+    position: { x: 100, y: 400 }
+    properties:
+      name: "Critical Scholar"
+      provider: ollama
+      model_name: ollama/mistral:latest
+      temperature: 0.7
+      max_tokens: 600
+      system_prompt: >
+        You are a critical technology scholar who examines power structures
+        and inequalities. You focus on labor displacement, concentration of
+        power in tech companies, environmental costs, and epistemic risks. You
+        demand evidence for optimistic claims.
+
+  - id: llm_researcher3
+    type: simple/llm
+    position: { x: 100, y: 550 }
+    properties:
+      name: "Policy Pragmatist"
+      provider: ollama
+      model_name: ollama/phi3:latest
+      temperature: 0.7
+      max_tokens: 600
+      system_prompt: >
+        You are a policy researcher focused on practical governance. You
+        analyze regulatory frameworks, international coordination challenges,
+        and enforcement mechanisms. You look for actionable recommendations
+        rather than abstract principles.
+
+  - id: models
+    type: tournament/models
+    position: { x: 450, y: 400 }
+    properties:
+      selected_models: []
+
+  - id: generate
+    type: tournament/generate
+    position: { x: 700, y: 100 }
+    properties:
+      system_prompt: >
+        You are an academic researcher. Write a well-structured analysis with
+        clear arguments and evidence.
+
+  - id: peer_review
+    type: tournament/peer_review
+    position: { x: 950, y: 250 }
+    properties:
+      anonymize: true
+      criteria: |
+        Evaluate as an academic reviewer:
+        1. Originality of insights (1-10)
+        2. Logical coherence (1-10)
+        3. Evidence quality (1-10)
+        4. Writing clarity (1-10)
+        5. Practical relevance (1-10)
+
+        Provide constructive feedback and overall score.
+
+  - id: rank
+    type: tournament/rank
+    position: { x: 1200, y: 250 }
+    properties: {}
+
+  - id: champion_llm
+    type: simple/llm
+    position: { x: 1450, y: 250 }
+    properties:
+      name: ""
+      provider: ollama
+      model_name: ollama/llama3.2:3b
+      temperature: 0.7
+      max_tokens: 4096
+
+edges:
+  - source: llm_researcher1
+    target: models
+    sourceHandle: model_config
+    targetHandle: model_1
+
+  - source: llm_researcher2
+    target: models
+    sourceHandle: model_config
+    targetHandle: model_2
+
+  - source: llm_researcher3
+    target: models
+    sourceHandle: model_config
+    targetHandle: model_3
+
+  - source: question
+    target: generate
+    sourceHandle: output_text
+    targetHandle: prompt
+
+  - source: models
+    target: generate
+    sourceHandle: models
+    targetHandle: models
+
+  - source: generate
+    target: peer_review
+    sourceHandle: responses
+    targetHandle: responses
+
+  - source: models
+    target: peer_review
+    sourceHandle: models
+    targetHandle: models
+
+  - source: question
+    target: peer_review
+    sourceHandle: output_text
+    targetHandle: question
+
+  - source: peer_review
+    target: rank
+    sourceHandle: scores
+    targetHandle: scores
+
+  - source: models
+    target: rank
+    sourceHandle: models
+    targetHandle: models
+
+  - source: rank
+    target: champion_llm
+    sourceHandle: champion
+    targetHandle: model_config
+
+outputs:
+  - rank
+  - peer_review

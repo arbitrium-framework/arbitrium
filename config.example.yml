@@ -1,0 +1,74 @@
+# Arbitrium Framework - Example Configuration
+# This is the default configuration for heterogeneous tournaments with diverse models
+
+# Question to analyze (can also be provided via CLI argument)
+question: >
+  Put your question here.
+
+# Model configurations for heterogeneous tournament
+# Each model requires: provider, model_name, display_name
+# model_name must be in LiteLLM format: provider/model for non-OpenAI models
+# Optional: temperature (default 0.7), max_tokens (default 4096)
+models:
+  gpt:
+    provider: openai
+    model_name: gpt-5
+    display_name: "GPT-5"
+    temperature: 0.7
+    max_tokens: 4096
+    reasoning_effort: high
+
+  claude:
+    provider: anthropic
+    model_name: anthropic/claude-opus-4-5-20251101
+    display_name: "Claude Opus 4.5"
+    temperature: 0.7
+    max_tokens: 4096
+    reasoning_effort: high
+
+  gemini:
+    provider: gemini
+    model_name: gemini/gemini-3-pro-preview
+    display_name: "Gemini 3 Pro"
+    temperature: 0.7
+    max_tokens: 4096
+    reasoning_effort: high
+
+  grok:
+    provider: xai
+    model_name: xai/grok-4-1-fast-reasoning
+    display_name: "Grok 4"
+    temperature: 0.8
+    max_tokens: 4096
+    reasoning_effort: high
+
+# Tournament configuration
+tournament:
+  # Judge model for scoring responses (can be one of the tournament models or separate)
+  judge_model: claude  # Use Claude as the judge
+  # Number of improvement rounds before elimination
+  improvement_rounds: 2
+  # Anonymize model identities during evaluation (recommended for fairness)
+  anonymize: true
+# Knowledge Bank configuration
+knowledge_bank:
+  enabled: true
+  # Maximum number of insights to preserve (LRU eviction when exceeded)
+  max_insights: 100
+  # Similarity threshold for deduplication (0.0-1.0, higher = more strict)
+  similarity_threshold: 0.75
+
+# Feature flags (advanced settings)
+features:
+  # Model to use for extracting insights from eliminated models
+  # "leader" = use current tournament leader, or specify a model key (e.g., "claude")
+  knowledge_bank_model: leader
+
+# Output configuration
+outputs_dir: "."
+
+# Logging
+logging:
+  level: INFO
+  file_logging: true
+  console_logging: true
