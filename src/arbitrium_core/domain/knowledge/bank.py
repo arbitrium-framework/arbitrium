@@ -63,14 +63,16 @@ class EnhancedKnowledgeBank:
                     else None
                 )
                 self.logger.warning(
-                    f"Leader not determined yet, using fallback model: {extractor_model_key}"
+                    "Leader not determined yet, using fallback model: %s",
+                    extractor_model_key,
                 )
             else:
                 leader_display = self.comparison.anon_mapping.get(
                     extractor_model_key, extractor_model_key
                 )
                 self.logger.info(
-                    f"Using tournament leader {leader_display} for insight extraction"
+                    "Using tournament leader %s for insight extraction",
+                    leader_display,
                 )
             return extractor_model_key
         else:
@@ -129,13 +131,16 @@ class EnhancedKnowledgeBank:
         self, response_content: str, extractor_model_key: str
     ) -> list[str]:
         self.logger.debug(
-            f"[{extractor_model_key}] Raw insight extraction response: {response_content}"
+            "[%s] Raw insight extraction response: %s",
+            extractor_model_key,
+            response_content,
         )
 
         if detect_apology_or_refusal(response_content):
             self.logger.error(
-                f"[{extractor_model_key}] Model returned apology/refusal instead of insight extraction. "
-                f"Response: {response_content}"
+                "[%s] Model returned apology/refusal instead of insight extraction. Response: %s",
+                extractor_model_key,
+                response_content,
             )
             return []
 
@@ -145,7 +150,9 @@ class EnhancedKnowledgeBank:
 
         if not claims:
             self.logger.warning(
-                f"[{extractor_model_key}] No valid insights found in response. Response: {response_content}"
+                "[%s] No valid insights found in response. Response: %s",
+                extractor_model_key,
+                response_content,
             )
 
         return claims
