@@ -1,14 +1,11 @@
-from abc import ABC, abstractmethod
+from typing import Protocol
 
 
-class CacheProtocol(ABC):
-    @abstractmethod
+class CacheProtocol(Protocol):
     def get(
         self, model_name: str, prompt: str, temperature: float, max_tokens: int
-    ) -> tuple[str, float] | None:
-        pass
+    ) -> tuple[str, float] | None: ...
 
-    @abstractmethod
     def set(
         self,
         model_name: str,
@@ -17,13 +14,8 @@ class CacheProtocol(ABC):
         max_tokens: int,
         response: str,
         cost: float,
-    ) -> None:
-        pass
+    ) -> None: ...
 
-    @abstractmethod
-    def clear(self) -> None:
-        pass
+    def clear(self) -> None: ...
 
-    @abstractmethod
-    def close(self) -> None:
-        pass
+    def close(self) -> None: ...

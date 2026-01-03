@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from arbitrium_core.ports.cache import CacheProtocol
 
 
 class ModelResponse:
@@ -94,5 +97,5 @@ class ModelProvider(Protocol):
         cls,
         model_key: str,
         config: dict[str, Any],
-        response_cache: Any | None = None,
+        response_cache: "CacheProtocol | None" = None,
     ) -> Awaitable[BaseModel]: ...

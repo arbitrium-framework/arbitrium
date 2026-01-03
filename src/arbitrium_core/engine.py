@@ -9,7 +9,7 @@ from arbitrium_core.ports.llm import BaseModel, ModelResponse
 from arbitrium_core.ports.similarity import SimilarityEngine
 from arbitrium_core.shared.logging import get_contextual_logger
 
-logger = get_contextual_logger("arbitrium")
+logger = get_contextual_logger(__name__)
 
 
 class _InternalEventHandler:
@@ -157,7 +157,7 @@ class Arbitrium:
                 f"Failed models: {list(self._failed_models.keys())}"
             )
 
-        logger.info(f"Starting tournament with {len(models)} models")
+        logger.info("Starting tournament with %d models", len(models))
 
         comparison = self._create_comparison(models)
         self._last_comparison = comparison
@@ -198,7 +198,7 @@ class Arbitrium:
             raise RuntimeError("No healthy models available")
 
         logger.info(
-            f"Running prompt through {len(self._healthy_models)} models"
+            "Running prompt through %d models", len(self._healthy_models)
         )
 
         results = {}
@@ -206,8 +206,8 @@ class Arbitrium:
             try:
                 response = await self.run_single_model(model_key, prompt)
                 results[model_key] = response
-            except Exception as e:
-                logger.error(f"Failed to run {model_key}: {e}")
+            except Exception:
+                logger.exception("Failed to run %s", model_key)
                 # Continue with other models
                 continue
 

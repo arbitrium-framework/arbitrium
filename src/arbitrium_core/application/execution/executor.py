@@ -6,6 +6,7 @@ from typing import Any
 
 from arbitrium_core.application.workflow.nodes.base import BaseNode
 from arbitrium_core.application.workflow.registry import registry
+from arbitrium_core.domain.errors import GraphValidationError
 from arbitrium_core.shared.logging import get_contextual_logger
 
 logger = get_contextual_logger(__name__)
@@ -158,7 +159,9 @@ class BaseExecutor(ABC):
                 errors.append(f"Unknown node type: {node_type}")
 
         if errors:
-            raise ValueError(f"Graph build errors: {'; '.join(errors)}")
+            raise GraphValidationError(
+                f"Graph build errors: {'; '.join(errors)}"
+            )
 
         dependencies: dict[str, list[str]] = defaultdict(list)
         connections: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
@@ -178,11 +181,11 @@ class BaseExecutor(ABC):
             )
 
             if source not in node_instances:
-                raise ValueError(
+                raise GraphValidationError(
                     f"Edge references unknown source node: {source}"
                 )
             if target not in node_instances:
-                raise ValueError(
+                raise GraphValidationError(
                     f"Edge references unknown target node: {target}"
                 )
 
@@ -226,7 +229,9 @@ class BaseExecutor(ABC):
                         queue.append(other_id)
 
         if len(result) != len(nodes):
-            raise ValueError("Graph contains a cycle - check node connections")
+            raise GraphValidationError(
+                "Graph contains a cycle - check node connections"
+            )
 
         return result
 
@@ -260,7 +265,7 @@ class BaseExecutor(ABC):
             ]
 
             if not current_layer:
-                raise ValueError(
+                raise GraphValidationError(
                     "Graph contains a cycle - check node connections"
                 )
 
@@ -358,7 +363,7 @@ class BaseExecutor(ABC):
         node_instances: dict[str, BaseNode],
     ) -> None:
         if not node_instances:
-            raise ValueError("No valid nodes in graph")
+            raise GraphValidationError("No valid nodes in graph")
 
     def _build_execution_graph(
         self,

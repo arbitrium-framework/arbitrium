@@ -1,22 +1,13 @@
-from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Protocol
 
 
-class SimilarityEngine(ABC):
-    @abstractmethod
-    def fit(self, texts: list[str]) -> None:
-        pass
+class SimilarityEngine(Protocol):
+    def fit(self, texts: list[str]) -> None: ...
 
-    @abstractmethod
-    def transform(self, texts: list[str]) -> Any:
-        pass
+    def transform(self, texts: list[str]) -> Any: ...
 
-    @abstractmethod
-    def is_fitted(self) -> bool:
-        pass
+    def is_fitted(self) -> bool: ...
 
-    @abstractmethod
     def compute_similarity(
         self, query_vector: Any, corpus_vectors: Any
-    ) -> list[float]:
-        pass
+    ) -> list[float]: ...

@@ -1,12 +1,17 @@
 "Core comparison functionality for Arbitrium Framework."
 
 import asyncio
+import logging
 import re
 import statistics
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from arbitrium_core.shared.logging.structured import ContextualLogger
 
 from arbitrium_core.domain.errors import (
     BudgetExceededError,
@@ -19,6 +24,9 @@ from arbitrium_core.domain.prompts import (
     PromptBuilder,
     PromptFormatter,
 )
+from arbitrium_core.domain.tournament.anonymizer import ModelAnonymizer
+from arbitrium_core.domain.tournament.report import ReportGenerator
+from arbitrium_core.domain.tournament.scoring import ScoreExtractor
 from arbitrium_core.ports.llm import BaseModel, ModelResponse
 from arbitrium_core.ports.similarity import SimilarityEngine
 from arbitrium_core.shared.constants import (
@@ -29,10 +37,6 @@ from arbitrium_core.shared.constants import (
 from arbitrium_core.shared.logging import get_contextual_logger
 from arbitrium_core.shared.text import indent_text, strip_meta_commentary
 
-from .anonymizer import ModelAnonymizer
-from .report import ReportGenerator
-from .scoring import ScoreExtractor
-
 
 # Internal interfaces for ModelComparison
 class EventHandler(ABC):
@@ -42,7 +46,7 @@ class EventHandler(ABC):
 
 
 class HostEnvironment(ABC):
-    base_dir: Any  # Output directory path (required by implementations)
+    base_dir: Path | str  # Output directory path (required by implementations)
 
     @abstractmethod
     async def read_file(self, path: str) -> str:
@@ -116,7 +120,9 @@ class BudgetGuard:
 
 
 class CostTracker:
-    def __init__(self, logger: Any = None):
+    def __init__(
+        self, logger: "logging.Logger | ContextualLogger | None" = None
+    ):
         self.total_cost = 0.0
         self.cost_by_model: dict[str, float] = {}
         self.logger = logger or get_contextual_logger("arbitrium.cost_tracker")
@@ -129,7 +135,10 @@ class CostTracker:
         self.cost_by_model[model_name] += cost
 
         self.logger.debug(
-            f"💰 Added ${cost:.4f} for {model_name}, total now: ${self.total_cost:.4f}"
+            "Added $%.4f for %s, total now: $%.4f",
+            cost,
+            model_name,
+            self.total_cost,
         )
 
     def get_summary(self) -> dict[str, Any]:
@@ -171,7 +180,7 @@ class CostTracker:
                 extra={"display_type": "colored_text"},
             )
 
-        self.logger.info(f"💰 Tournament total cost: ${self.total_cost:.4f}")
+        self.logger.info("Tournament total cost: $%.4f", self.total_cost)
 
 
 class TournamentRunner:
@@ -196,7 +205,7 @@ class TournamentRunner:
         )
 
         self.logger.info(
-            f"Starting model comparison tournament: {initial_question}"
+            "Starting model comparison tournament: %s", initial_question
         )
         self.comp.previous_answers = []
         self.comp.eliminated_models = []
@@ -210,9 +219,7 @@ class TournamentRunner:
             self.logger.warning("Process interrupted by user.")
             return "Process interrupted by user."
         except Exception as e:
-            self.logger.error(
-                f"Unexpected error in tournament: {e!s}", exc_info=True
-            )
+            self.logger.exception("Unexpected error in tournament: %s", e)
             return f"Tournament error: {e!s}"
 
     async def _run_initial_phase(self, initial_question: str) -> bool:

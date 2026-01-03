@@ -16,6 +16,7 @@ __all__ = [
     "ExceptionClassifier",
     "FatalError",
     "FileSystemError",
+    "GraphValidationError",
     "InputError",
     "ModelError",
     "ModelResponseError",
@@ -109,6 +110,23 @@ class TournamentTimeoutError(ArbitriumError):
         self.elapsed = elapsed
         self.timeout = timeout
         enhanced_message = f"Tournament timeout: {elapsed:.1f}s >= limit {timeout:.1f}s. {message}"
+        super().__init__(enhanced_message, *args)
+
+
+class GraphValidationError(ArbitriumError):
+    """Exception for workflow graph validation errors."""
+
+    def __init__(
+        self,
+        message: str,
+        node_id: str | None = None,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        self.node_id = node_id
+        enhanced_message = message
+        if node_id:
+            enhanced_message = f"[Node: {node_id}] {enhanced_message}"
         super().__init__(enhanced_message, *args)
 
 
