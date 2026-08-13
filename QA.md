@@ -21,12 +21,12 @@ GUI server is local dev tool only (binds 0.0.0.0 intentionally).
 - **Ollama smoke**: `make discover-ollama` + at least one slim-config run via `certamen --config /tmp/cert-*.yml` to catch provider-prefix and slim-schema regressions
 - **Workflow integration**: `certamen workflow validate` + `certamen workflow execute` over EVERY YAML under `examples/workflows/` AND `src/certamen/workflows/` — validate-only is insufficient (catches schema typos but not runtime issues like wrong property names, missing model providers, empty outputs)
 - **GUI QA (Playwright MCP)**: build `cd frontend && npm run build && npm run lint`, start `certamen gui --port 8765` with `CERTAMEN_SKIP_AUTH=true`, navigate to `http://localhost:8765/`, exercise Workflow Editor + Tournament Results tabs, watch console errors and `/api/runs` content (question/champion render)
+- SonarCloud: **ACTIVE and gating PRs** (project key `nikolay-e_arbitrium-core`, runs as a required `SonarCloud Code Analysis` check). It uses Automatic Analysis (no `sonar-project.properties`), so exclusions are set via the web UI / `POST /api/settings/set`. Quality gate flips to ERROR on a single new BUG (`new_reliability_rating` 1→3). Common trap in tests: **S1244 "Do not perform equality checks with floating point values"** — even `x == 0.0` on a literal-zero price fires; use `== pytest.approx(0.0, abs=1e-12)`. (Coverage via pytest-cov, security via ruff `S*` + bandit + CodeQL, secrets via gitleaks/detect-secrets also run — Sonar overlaps but is NOT retired.)
 
 **Not Applicable:**
 
 - Schemathesis / ZAP / autoqa: no HTTP API surface intended for external traffic (the GUI server is dev-only, binds 0.0.0.0 intentionally, has no OpenAPI). The crawler / accessibility checks are out-of-scope until/unless we ship the GUI as a hosted product.
-- K8s logs: deployment is simple container, no complex orchestration
-- SonarCloud: **still ACTIVE and gating PRs** (project key `nikolay-e_arbitrium-core`, runs as a required `SonarCloud Code Analysis` check). It uses Automatic Analysis (no `sonar-project.properties`), so exclusions are set via the web UI / `POST /api/settings/set`. Quality gate flips to ERROR on a single new BUG (`new_reliability_rating` 1→3). Common trap in tests: **S1244 "Do not perform equality checks with floating point values"** — even `x == 0.0` on a literal-zero price fires; use `== pytest.approx(0.0, abs=1e-12)`. (Coverage via pytest-cov, security via ruff `S*` + bandit + CodeQL, secrets via gitleaks/detect-secrets also run — Sonar overlaps but is NOT retired.)
+- K8s logs: no K8s deployment (see Project Type; the Docker image is a build artifact, nothing runs it in the cluster)
 
 ## Project-Specific Findings
 
@@ -42,17 +42,12 @@ GUI server is local dev tool only (binds 0.0.0.0 intentionally).
 
 Web interface (`interfaces/web/`) and logging infrastructure (`shared/logging/`) contribute 0% coverage in CI as they require runtime; exclude them from `coverage.omit`. Threshold of 30% is correct for integration-test-only project.
 
-## GUI / Workflow Editor
-
-- GUI server requires `OLLAMA_BASE_URL` env to actually run workflows that include Ollama models; `CERTAMEN_SKIP_AUTH=true` for dev (skips bcrypt + DB init).
-- Workflow Editor's WebSocket connects to `/ws` for live execution events; if backend uses lazy auth import path it must also bypass when `CERTAMEN_SKIP_AUTH=true`.
-
 ## Ollama Smoke Test
 
 - Use `venv/bin/certamen` not system `certamen` (system binary may point to old package name).
 - Always set `OLLAMA_BASE_URL=http://localhost:11434`.
 - **qwen3 models with thinking mode**: use `gemma3:1b` as substitute in QA config — qwen3 fills `max_tokens` with `<think>...</think>` blocks leaving no room for actual answer.
-- **Run every example workflow at least once per `/qa` pass**: `for wf in examples/workflows/*.yml src/certamen/workflows/*.yml; do certamen workflow execute "$wf"; done`. Validate-only ran green for both `multi-model-comparison.yml` and `prompt-template.yml` while runtime silently produced empty outputs — only end-to-end execution surfaced the broken `pages:`/`mode:` properties.
+- **Run every example workflow at least once per `/qa` pass**: `for wf in examples/workflows/*.yml src/certamen/workflows/*.yml; do certamen workflow execute "$wf"; done`. Validate-only runs green while runtime silently produces empty outputs — see "Workflow YAML Authoring Traps" (`pages:` vs `texts:`).
 - **`diamond-tournament` requires 4 LLM nodes**: slim config must declare exactly N models where N matches the workflow's `simple/llm` node count. Mismatch errors loudly (`expects N models, got M`) — good. For `diamond-tournament` use 4 entries; reuse the same model under different keys (`gemma3_1b_a`/`gemma3_1b_b`) when only 1–2 local models are available.
 - **`diamond-tournament.yml` is the heavy full-pipeline E2E and runs ~15+ min** when all 4 models genuinely generate (iterative diverge→converge, `gate max_rounds: 6`, peer-review + interrogate + synthesis + knowledge-map). Its shipped `Model C: ollama/qwen3:4b` thinking-modes to an empty response → emits a non-fatal `WARNING [base] Model generation returned error response` and Model C contributes nothing; the tournament still completes and picks a champion (graceful). qwen3's empty short-circuit is *why* it appears to finish quickly. Swapping Model C to a generating model surfaces a second trap: weak 3B judges (orca-mini) return `apology/refusal instead of evaluation` (logged ERROR, scoring continues). **For a FAST full-pipeline E2E check use `tournament-elimination.yml`** (completes with a champion in ~1 min); reserve `diamond-tournament.yml` for when you can wait. Changing the shipped Model C roster is a curation decision, left to the maintainer.
 - **Per `slim.py` schema**: extra top-level keys are forbidden. `judges:` does NOT exist; judges are defined inside the workflow's tournament/judge node. The slim config holds ONLY `workflow`, `question`, `models`, `overrides`, `price_overrides`, `secrets`, `outputs_dir`, `logging` (see `SlimConfig` in `src/certamen/infrastructure/config/slim.py`). `price_overrides` is a map of `model_name → {input_per_1m, output_per_1m}` consumed only by `certamen cost`.
@@ -66,7 +61,7 @@ Web interface (`interfaces/web/`) and logging infrastructure (`shared/logging/`)
 
 ## Workflow YAML Authoring Traps
 
-- **`simple/text` node**: properties are `texts: [str, ...]`, `separator: str`, and (internal) `pages`, `current_page`, `hidden`. **Putting seed input into `pages:` instead of `texts:` produces silent empty outputs** — `TextNode.execute()` only reads `pages` when `input_text` is connected. Symptom: workflow validates AND executes successfully, all LLM nodes get empty prompts, all `simple/text` output nodes show `output_text: ""`. Seen on `examples/workflows/multi-model-comparison.yml` and `examples/workflows/prompt-template.yml`. Fix: convert `pages: [["seed text"]]` + `mode: append` → `texts: ["seed text"]` + `separator: "\n"`. The `mode:` property does NOT exist on `simple/text` (only on `flow/gate`).
+- **`simple/text` node**: properties are `texts: [str, ...]`, `separator: str`, and (internal) `pages`, `current_page`, `hidden`. **Putting seed input into `pages:` instead of `texts:` produces silent empty outputs** — `TextNode.execute()` only reads `pages` when `input_text` is connected. Symptom: workflow validates AND executes successfully, all LLM nodes get empty prompts, all `simple/text` output nodes show `output_text: ""`. Seen on `examples/workflows/multi-model-comparison.yml` and `examples/workflows/prompt-template.yml`. Fix: convert `pages: [["seed text"]]` + `mode: append` → `texts: ["seed text"]` + `separator: "\n"`. The `mode:` property does NOT exist on `simple/text` (only on `flow/gate`). Covered by `tests/integration/test_executor_gaps.py`.
 - **`simple/llm` model_name MUST include provider prefix** when provider is `ollama`: `model_name: ollama/gemma3:1b`, not `model_name: gemma3:1b`. Without the prefix, LiteLLM raises `BadRequestError: LLM Provider NOT provided` and the model returns an error response. `LiteLLMModel._validate_required_fields` now auto-prepends the prefix for `ollama` provider — but example workflows should still write the prefix explicitly for clarity.
 
 ## Error Classifier Foot-Guns
@@ -86,8 +81,8 @@ Web interface (`interfaces/web/`) and logging infrastructure (`shared/logging/`)
 - After any frontend change, run `cd frontend && npm run build && npm run lint` BEFORE manually testing. `tsc -b` (inside `npm run build`) is stricter than `tsc --noEmit` and catches type errors that `npm run lint` misses.
 - The shipped `frontend/index.html` MUST include a `<link rel="icon" ...>` — absence causes a console-visible `404 /favicon.ico` on every page load. Use inline SVG data URL (e.g., `🏆` glyph) to avoid an asset round-trip.
 - Health endpoint is `/health` NOT `/api/health` (see `_setup_routes` in `server.py:248`). Other routes ARE under `/api/`: `/api/models`, `/api/nodes`, `/api/runs`, `/api/runs/{id}`, `/api/runs/{id}/events`, plus `/api/runs/{id}/attach` (websocket).
-- `CERTAMEN_SKIP_AUTH=true` is REQUIRED for local QA — without it, the GUI bootstrap tries to load `bcrypt`/JWT modules and may fail on env without `JWT_SECRET_KEY` / DB.
-- `OLLAMA_BASE_URL=http://localhost:11434` is also needed for the GUI to populate the model dropdown via `/api/models`; otherwise the editor shows a barebones model list (LiteLLM static fallback only).
+- `CERTAMEN_SKIP_AUTH=true` is REQUIRED for local QA — without it, the GUI bootstrap tries to load `bcrypt`/JWT modules and may fail on env without `JWT_SECRET_KEY` / DB. The Workflow Editor's WebSocket connects to `/ws` for live execution events; if the backend uses a lazy auth import path it must also bypass when `CERTAMEN_SKIP_AUTH=true`.
+- `OLLAMA_BASE_URL=http://localhost:11434` is needed both to actually run workflows that include Ollama models and for the GUI to populate the model dropdown via `/api/models`; otherwise the editor shows a barebones model list (LiteLLM static fallback only).
 
 ## Workflow Node Patterns (project-specific)
 
@@ -179,7 +174,6 @@ Web interface (`interfaces/web/`) and logging infrastructure (`shared/logging/`)
 ## Workflow executor — cycles vs feedback loops
 
 - A **back-edge in a workflow graph is NOT rejected as a cycle** — the executor classifies it as a bounded *feedback loop* (the mechanism behind tournament gate-loops) and runs the iteration loop up to `max_iterations` (default 20), then stops with normal `outputs`. `GraphValidationError("Graph contains a cycle")` only fires for a cycle *within a single execution layer* (non-feedback). So the safety property to assert for a cyclic graph is **termination** (returns `outputs`, no hang), not an error. See `tests/integration/test_executor_gaps.py`.
-- `simple/text` reads `texts:` only when no `input_text` is connected; seed text placed in `pages:` is silently ignored → empty `output_text` (validates + "runs" green). Covered by `test_executor_gaps.py`.
 
 ## GUI runtime bugs (found via Playwright MCP)
 
