@@ -7,6 +7,12 @@ name: diffctx review context
 'on':
   pull_request:
     branches: ['**']
+  # Exercisable without a pull request. Every copy of this workflow across the
+  # fleet had never produced a context: bot PRs are skipped below and human PRs
+  # to these repos are rare, so a broken pin or an action that cannot run in a
+  # given repo would have surfaced only when someone finally opened one. A
+  # dispatch run does everything a PR run does except the comment.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,12 +20,17 @@ concurrency:
 
 jobs:
   review-context:
-    # Dependency bumps are ~95% of the pull requests in this fleet and carry no
-    # semantic context — diffctx reports `empty` on a lockfile, so the comment
-    # would be noise on every one of them and the minutes would be spent for it.
-    # Gate on the account type rather than a list of bot logins, which rots the
-    # day a third bot is added.
-    if: github.event.pull_request.user.type != 'Bot'
+    # Dependency bumps are ~98% of the pull requests here (measured: 95-100 of
+    # the last 100 on every repo in the fleet), and a review context for a
+    # version bump is noise a reviewer does not read. Not because it is empty —
+    # measured on certamen#134, a 9-package bump: 4 fragments of
+    # `frontend/package.json`, the lockfile listed separately — but because
+    # those four fragments say nothing the PR title did not. Gate on the
+    # account type rather than a list of bot logins, which rots the day a third
+    # bot is added; a dispatch run bypasses it on purpose.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.user.type != 'Bot'
     name: Review context
     runs-on: ubuntu-latest
     permissions:
@@ -92,7 +103,14 @@ jobs:
           } > /tmp/comment.md
           cp /tmp/comment.md "$GITHUB_STEP_SUMMARY"
 
-          # One sticky comment per PR: find ours by marker and edit it, else create.
+          # One sticky comment per PR: find ours by marker and edit it, else
+          # create. A dispatch run has no PR to comment on and stops at the
+          # step summary above — which is the whole point of being able to
+          # exercise this without opening one.
+          if [ -z "${PR_NUMBER}" ]; then
+            echo "no pull request in scope — context written to the step summary only"
+            exit 0
+          fi
           api="repos/${GITHUB_REPOSITORY}/issues"
           existing=$(gh api "${api}/${PR_NUMBER}/comments" --paginate \
             --jq "[.[] | select(.body | startswith(\"${marker}\"))] | first | .id // empty")
