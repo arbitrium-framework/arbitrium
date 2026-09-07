@@ -79,7 +79,7 @@ repos:
   # LINT + FORMAT (Ruff: replaces flake8, isort, pyupgrade, and black)
   # ============================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.12
+    rev: v0.15.22
     hooks:
       - id: ruff
         name: ruff (lint + import sort + pyupgrade, autofix)
